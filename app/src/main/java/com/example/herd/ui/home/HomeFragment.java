@@ -39,6 +39,7 @@ import com.firebase.ui.firestore.paging.FirestorePagingOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.material.appbar.AppBarLayout;
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
@@ -57,7 +58,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
     //UI element variables
     private ProgressBar progressBar;
-    private FloatingActionButton addPostButton, newPostsButton;
+    private FloatingActionButton addPostButton;
+    private ExtendedFloatingActionButton newPostsButton;
     private SwipeRefreshLayout swipeContainer;
     private AppBarLayout appBarLayout;
     private Toolbar toolbar;
@@ -89,9 +91,9 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         addPostButton = root.findViewById(R.id.addPostButton);
         newPostsButton = root.findViewById(R.id.newPostsButton);
         swipeContainer = root.findViewById(R.id.swipeContainer);
-        appBarLayout = root.findViewById(R.id.app_bar);
-        toolbar = root.findViewById(R.id.toolbar);
-        ((AppCompatActivity) getActivity()).setSupportActionBar(toolbar);
+        //appBarLayout = root.findViewById(R.id.app_bar);
+        //toolbar = root.findViewById(R.id.toolbar);
+        //((AppCompatActivity) getActivity()).setSupportActionBar(toolbar);
 
         preferences = getContext().getSharedPreferences("MyPref", Context.MODE_PRIVATE);
 
@@ -118,7 +120,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private void listenForNewPosts() {
 
         Query query = firestore.collection("posts")
-                .orderBy("time", Query.Direction.DESCENDING);
+                .orderBy("score", Query.Direction.DESCENDING);
 
         PagedList.Config config = new PagedList.Config.Builder()
                 .setEnablePlaceholders(false)
