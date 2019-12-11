@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Herd</string>
+    <string name="herd_dialog">Image with def of herd</string>
+    <string name="follow_the_herd_button">Image button prompting user to follow the herd</string>
+    <string name="title_activity_main2">Main2Activity</string>
+    <string name="title_home">Home</string>
+    <string name="title_profile">Profile</string>
+    <string name="title_notifications">Notifications</string>
+    <string name="title_map">Map</string>
+    <string name="sample_post">This is a test post so that the the post view can be sized
+        properly</string>
+    <string name="sample_time">Y sec</string>
+    <string name="sample_comments">0 Comments</string>
+    <string name="title_activity_add_post">AddPostActivity</string>
+    <string name="no_comments">There are no comments yet</string>
+</resources>
