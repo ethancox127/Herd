@@ -151,14 +151,19 @@ public class PostAdapter extends RecyclerView.Adapter<PostAdapter.PostViewHolder
 
 public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostViewHolder> {
 
-    FirebaseFirestore firestore = FirebaseFirestore.getInstance();
+    private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
+    private ArrayList<String> postID;
+    private OnItemClickListener clickListener;
 
-    public PostAdapter(@NonNull FirestorePagingOptions<Post> options) {
+    public PostAdapter(@NonNull FirestorePagingOptions<Post> options, ArrayList<String> postID,
+                       OnItemClickListener clickListener) {
         super(options);
+        this.postID = postID;
+        this.clickListener = clickListener;
     }
 
     @Override
-    protected void onBindViewHolder(PostViewHolder holder, int i, Post post) {
+    protected void onBindViewHolder(PostViewHolder holder, int position, Post post) {
         holder.postView.setText(post.getPost());
 
         holder.score.setText(Integer.toString(post.getScore()));
@@ -167,7 +172,7 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
 
         holder.timeFromPost.setText("5m");
 
-        //updateFields(holder, position);
+        updateFields(holder, position);
     }
 
     @NonNull
@@ -208,10 +213,10 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
 
         @Override
         public void onClick(View view) {
-
+            clickListener.onItemClick(view, getAdapterPosition());
         }
     }
-/*
+
     private void updateFields(PostViewHolder holder, int position) {
         final TextView score = holder.score;
         final TextView numComments = holder.numComments;
@@ -241,6 +246,4 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
                     }
                 });
     }
- */
-
 }

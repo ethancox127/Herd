@@ -35,6 +35,7 @@ import com.example.herd.PostCommentsActivity;
 import com.example.herd.R;
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
+import com.firebase.ui.firestore.SnapshotParser;
 import com.firebase.ui.firestore.paging.FirestorePagingOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
@@ -71,6 +72,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private RecyclerView postsRecyclerView;
     private PostAdapter postAdapter;
     private LinearLayoutManager postsLayoutManager;
+    private ArrayList<String> postID = new ArrayList<>();
+    private ArrayList<Post> postList = new ArrayList<>();
 
     //Timestamp variable for differentiating between posts added after last load
     public static Timestamp curTime;
@@ -91,9 +94,6 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         addPostButton = root.findViewById(R.id.addPostButton);
         newPostsButton = root.findViewById(R.id.newPostsButton);
         swipeContainer = root.findViewById(R.id.swipeContainer);
-        //appBarLayout = root.findViewById(R.id.app_bar);
-        //toolbar = root.findViewById(R.id.toolbar);
-        //((AppCompatActivity) getActivity()).setSupportActionBar(toolbar);
 
         preferences = getContext().getSharedPreferences("MyPref", Context.MODE_PRIVATE);
 
@@ -130,10 +130,38 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
         FirestorePagingOptions<Post> options = new FirestorePagingOptions.Builder<Post>()
                 .setLifecycleOwner(this)
-                .setQuery(query, config, Post.class)
+                .setQuery(query, config, new SnapshotParser<Post>() {
+                    @NonNull
+                    @Override
+                    public Post parseSnapshot(@NonNull DocumentSnapshot snapshot) {
+                        Post post = snapshot.toObject(Post.class);
+                        postList.add(post);
+                        postID.add(snapshot.getId());
+                        return post;
+                    }
+                })
                 .build();
 
-        postAdapter = new PostAdapter(options);
+        postAdapter = new PostAdapter(options, postID, new OnItemClickListener() {
+            @Override
+            public void onItemClick(View view, int position) {
+                Log.d("Herd", view.toString());
+                switch (view.getId()) {
+                    case R.id.postView:
+                        Intent intent = new Intent(getContext(), PostCommentsActivity.class);
+                        intent.putExtra("Post", postList.get(position));
+                        intent.putExtra("Post ID", postID.get(position));
+                        startActivity(intent);
+                        break;
+                    case R.id.upvote:
+                        updateScore(postID.get(position), 1);
+                        break;
+                    case R.id.downvote:
+                        updateScore(postID.get(position), -1);
+                        break;
+                }
+            }
+        });
 
         postsRecyclerView.setAdapter(postAdapter);
         DividerItemDecoration decoration = new DividerItemDecoration(postsRecyclerView.getContext(),
@@ -158,6 +186,22 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                             if (doc.getData().get("userID") != userID) {
                                 addButton();
                             }
+                        }
+                    }
+                });
+    }
+
+    private void updateScore(String postID, int value) {
+        firestore.collection("posts").document(postID)
+                .update("score", FieldValue.increment(value))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Post score update successful");
+                        } else {
+                            Log.d("Herd", "Post score update failed");
+                            task.getException().printStackTrace();
                         }
                     }
                 });

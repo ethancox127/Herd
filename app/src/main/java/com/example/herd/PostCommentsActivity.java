@@ -47,6 +47,8 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_post_comments);
 
+        Log.d("PostCommentsActivity", "In onCreate");
+
         commentsRecyclerView = (RecyclerView) findViewById(R.id.commentsRecyclerView);
         textView = (TextView) findViewById(R.id.noCommentsText);
         floatingActionButton = (FloatingActionButton) findViewById(R.id.addCommentButton);
@@ -61,7 +63,13 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
         Post post = (Post) intent.getParcelableExtra("Post");
         commentList.add(post);
         commentID.add(docID);
-       /* commentAdapter = new PostAdapter(commentList, commentID, new OnItemClickListener() {
+
+        Log.d("Herd", post.toString());
+        Log.d("Herd", docID);
+
+        commentsRecyclerView.setAdapter(commentAdapter);
+        commentsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        /*commentAdapter = new PostAdapter(commentList, commentID, new OnItemClickListener() {
             @Override
             public void onItemClick(View view, int position) {
                 switch (view.getId()) {

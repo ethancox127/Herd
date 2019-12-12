@@ -8,7 +8,8 @@
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:theme="@style/AppTheme.AppBarOverlay">
 
         <com.google.android.material.appbar.CollapsingToolbarLayout
             android:id="@+id/toobar_layout"
@@ -25,12 +26,16 @@
                 <com.google.android.material.button.MaterialButton
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Hot" />
+                    style="@style/Widget.MaterialComponents.Button.Icon"
+                    android:text="Hot"
+                    android:textColor="@color/cardview_dark_background"/>
 
                 <com.google.android.material.button.MaterialButton
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="New" />
+                    style="@style/Widget.MaterialComponents.Button.Icon"
+                    android:text="New"
+                    android:textColor="@color/cardview_dark_background"/>
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <androidx.appcompat.widget.Toolbar
