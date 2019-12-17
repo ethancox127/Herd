@@ -120,12 +120,12 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         swipeContainer.setOnRefreshListener(this);
 
         //Load existing posts and listen for new posts
-        listenForNewPosts();
+        listenForHotPosts();
 
         return root;
     }
 
-    private void listenForNewPosts() {
+    private void listenForHotPosts() {
 
         //Query for top posts
         Query query = firestore.collection("posts")
@@ -152,6 +152,60 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                     }
                 })
                 .build();
+
+        postList.clear();
+        postID.clear();
+
+        //Create Post adapter
+        postAdapter = new PostAdapter(options, postID, new OnItemClickListener() {
+            @Override
+            //Called when a post is clicked
+            //Get post and post ID at that position and start activity to display post and comments
+            public void onRowClick(int position) {
+                Intent intent = new Intent(getContext(), PostCommentsActivity.class);
+                intent.putExtra("Post", postList.get(position));
+                intent.putExtra("Post ID", postID.get(position));
+                startActivity(intent);
+            }
+        });
+
+        //Set the adapter for the recycler view and add the decorations and layout manager
+        postsRecyclerView.setAdapter(postAdapter);
+        postsRecyclerView.setLayoutManager(postsLayoutManager);
+        DividerItemDecoration decoration = new DividerItemDecoration(postsRecyclerView.getContext(),
+                DividerItemDecoration.VERTICAL);
+        postsRecyclerView.addItemDecoration(decoration);
+    }
+
+    private void listenForNewPosts() {
+        //Query for new posts
+        Query query = firestore.collection("posts")
+                .orderBy("time", Query.Direction.DESCENDING);
+
+        //Create paged list configurations
+        PagedList.Config config = new PagedList.Config.Builder()
+                .setEnablePlaceholders(false)
+                .setPrefetchDistance(10)
+                .setPageSize(10)
+                .build();
+
+        //Create Firestore Paging Options and parse posts in postsList and PostID's for other use
+        FirestorePagingOptions<Post> options = new FirestorePagingOptions.Builder<Post>()
+                .setLifecycleOwner(this)
+                .setQuery(query, config, new SnapshotParser<Post>() {
+                    @NonNull
+                    @Override
+                    public Post parseSnapshot(@NonNull DocumentSnapshot snapshot) {
+                        Post post = snapshot.toObject(Post.class);
+                        postList.add(post);
+                        postID.add(snapshot.getId());
+                        return post;
+                    }
+                })
+                .build();
+
+        postID.clear();
+        postList.clear();
 
         //Create Post adapter
         postAdapter = new PostAdapter(options, postID, new OnItemClickListener() {
@@ -229,6 +283,16 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
                 //Update the time to listen for new posts after
                 curTime = Timestamp.now();
+
+            case R.id.newButton:
+                curTime = Timestamp.now();
+                listenForNewPosts();
+                break;
+
+            case R.id.hotButton:
+                curTime = Timestamp.now();
+                listenForHotPosts();
+                break;
         }
     }
 
@@ -238,7 +302,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         super.onStart();
         //Activity starting, listen for new posts
         postAdapter.startListening();
-        //postAdapter.refresh();
+        if (newButton.isChecked())
+            postAdapter.refresh();
     }
 
     @Override

@@ -167,6 +167,11 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         this.clickListener = clickListener;
     }
 
+    public PostAdapter(@NonNull FirestorePagingOptions<Post> options, ArrayList<String> postID) {
+        super(options);
+        this.postID = postID;
+    }
+
     @Override
     protected void onBindViewHolder(PostViewHolder holder, int position, Post post) {
         //Bind data to view holder
@@ -226,7 +231,8 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
 
                 //A post was selected, return position to calling activity
                 case R.id.postView:
-                    clickListener.onRowClick(getAdapterPosition());
+                    if (clickListener != null)
+                        clickListener.onRowClick(getAdapterPosition());
                     break;
 
                 //Upvote button selected

@@ -138,4 +138,10 @@ public class Post implements Parcelable {
         dest.writeParcelable(time, flags);
         dest.writeString(userID);
     }
+
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("post = " + this.post + "\n");
+        return sb.toString();
+    }
 }
