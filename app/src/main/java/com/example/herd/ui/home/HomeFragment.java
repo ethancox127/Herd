@@ -3,6 +3,7 @@ package com.example.herd.ui.home;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.media.Image;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -11,8 +12,10 @@ import android.view.MenuInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -40,6 +43,7 @@ import com.firebase.ui.firestore.paging.FirestorePagingOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.material.appbar.AppBarLayout;
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.firebase.Timestamp;
@@ -62,8 +66,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private FloatingActionButton addPostButton;
     private ExtendedFloatingActionButton newPostsButton;
     private SwipeRefreshLayout swipeContainer;
-    private AppBarLayout appBarLayout;
-    private Toolbar toolbar;
+    private MaterialButton hotButton, newButton;
 
     //Firebase variables
     private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
@@ -78,6 +81,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     //Timestamp variable for differentiating between posts added after last load
     public static Timestamp curTime;
 
+    //SharedPreferences instance
     private SharedPreferences preferences;
 
     public View onCreateView(@NonNull LayoutInflater inflater,
@@ -94,24 +98,28 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         addPostButton = root.findViewById(R.id.addPostButton);
         newPostsButton = root.findViewById(R.id.newPostsButton);
         swipeContainer = root.findViewById(R.id.swipeContainer);
+        hotButton = root.findViewById(R.id.hotButton);
+        newButton = root.findViewById(R.id.newButton);
 
+        //Initialize the SharedPreferences
         preferences = getContext().getSharedPreferences("MyPref", Context.MODE_PRIVATE);
 
-        //Initialize Timestamp when user enters activity
+        //Get curTime to separate between posts already in firestore and those received after
         curTime = Timestamp.now();
 
         //Initialize the linear layout manager for the recycler view
         postsLayoutManager = new LinearLayoutManager(getContext());
 
-        //Set the filter menu on the toolbar
+        //Notify fragment there is a menu
         setHasOptionsMenu(true);
 
-        //Create an onClickListener for the add posts floating button
+        //Add click and swipe listeners
         addPostButton.setOnClickListener(this);
-
+        hotButton.setOnClickListener(this);
+        newButton.setOnClickListener(this);
         swipeContainer.setOnRefreshListener(this);
 
-        //Load and listen for new posts
+        //Load existing posts and listen for new posts
         listenForNewPosts();
 
         return root;
@@ -119,15 +127,18 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
     private void listenForNewPosts() {
 
+        //Query for top posts
         Query query = firestore.collection("posts")
                 .orderBy("score", Query.Direction.DESCENDING);
 
+        //Create paged list configurations
         PagedList.Config config = new PagedList.Config.Builder()
                 .setEnablePlaceholders(false)
                 .setPrefetchDistance(10)
                 .setPageSize(10)
                 .build();
 
+        //Create Firestore Paging Options and parse posts in postsList and PostID's for other use
         FirestorePagingOptions<Post> options = new FirestorePagingOptions.Builder<Post>()
                 .setLifecycleOwner(this)
                 .setQuery(query, config, new SnapshotParser<Post>() {
@@ -142,33 +153,27 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                 })
                 .build();
 
+        //Create Post adapter
         postAdapter = new PostAdapter(options, postID, new OnItemClickListener() {
             @Override
-            public void onItemClick(View view, int position) {
-                Log.d("Herd", view.toString());
-                switch (view.getId()) {
-                    case R.id.postView:
-                        Intent intent = new Intent(getContext(), PostCommentsActivity.class);
-                        intent.putExtra("Post", postList.get(position));
-                        intent.putExtra("Post ID", postID.get(position));
-                        startActivity(intent);
-                        break;
-                    case R.id.upvote:
-                        updateScore(postID.get(position), 1);
-                        break;
-                    case R.id.downvote:
-                        updateScore(postID.get(position), -1);
-                        break;
-                }
+            //Called when a post is clicked
+            //Get post and post ID at that position and start activity to display post and comments
+            public void onRowClick(int position) {
+                Intent intent = new Intent(getContext(), PostCommentsActivity.class);
+                intent.putExtra("Post", postList.get(position));
+                intent.putExtra("Post ID", postID.get(position));
+                startActivity(intent);
             }
         });
 
+        //Set the adapter for the recycler view and add the decorations and layout manager
         postsRecyclerView.setAdapter(postAdapter);
+        postsRecyclerView.setLayoutManager(postsLayoutManager);
         DividerItemDecoration decoration = new DividerItemDecoration(postsRecyclerView.getContext(),
                 DividerItemDecoration.VERTICAL);
-        postsRecyclerView.setLayoutManager(postsLayoutManager);
         postsRecyclerView.addItemDecoration(decoration);
 
+        //Query for new posts that were received after the user entered this fragment
         firestore.collection("posts")
                 .orderBy("time", Query.Direction.DESCENDING)
                 .whereGreaterThan("time", curTime)
@@ -180,6 +185,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                             e.printStackTrace();
                         }
 
+                        //If the new posts weren't entered by the user display the new posts button
                         if (snapshots != null && snapshots.size() > 0) {
                             DocumentSnapshot doc = snapshots.getDocuments().get(0);
                             String userID = preferences.getString("User ID", "");
@@ -191,22 +197,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                 });
     }
 
-    private void updateScore(String postID, int value) {
-        firestore.collection("posts").document(postID)
-                .update("score", FieldValue.increment(value))
-                .addOnCompleteListener(new OnCompleteListener<Void>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Void> task) {
-                        if (task.isSuccessful()) {
-                            Log.d("Herd", "Post score update successful");
-                        } else {
-                            Log.d("Herd", "Post score update failed");
-                            task.getException().printStackTrace();
-                        }
-                    }
-                });
-    }
-
+    //Add the new posts button to the layout and set it's click listener
     private void addButton() {
         newPostsButton.setVisibility(View.VISIBLE);
         newPostsButton.setOnClickListener(this);
@@ -230,9 +221,13 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                 startActivity(intent);
                 //startActivityForResult(intent, 1);
                 break;
+
+             //If the new posts button is clicked refresh the adapter and remove the button
             case R.id.newPostsButton:
                 postAdapter.refresh();
                 newPostsButton.setVisibility(View.GONE);
+
+                //Update the time to listen for new posts after
                 curTime = Timestamp.now();
         }
     }
@@ -241,20 +236,23 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     public void onStart() {
         Log.d("Home fragment", "In on start");
         super.onStart();
+        //Activity starting, listen for new posts
         postAdapter.startListening();
-        postAdapter.refresh();
+        //postAdapter.refresh();
     }
 
     @Override
     public void onStop() {
         Log.d("Home fragment","In on stop");
         super.onStop();
+        //Activity stopping, stop listening for new posts
         postAdapter.stopListening();
         newPostsButton.setVisibility(View.GONE);
     }
 
     @Override
     public void onRefresh() {
+        //Refresh the adapter and remove the spinner when done
         postAdapter.refresh();
         swipeContainer.setRefreshing(false);
     }

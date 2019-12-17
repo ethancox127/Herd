@@ -3,5 +3,5 @@ package com.example.herd;
 import android.view.View;
 
 public interface OnItemClickListener {
-    void onItemClick(View view, int position);
+    void onRowClick(int position);
 }
