@@ -55,7 +55,7 @@ public class AddPostActivity extends AppCompatActivity {
     public void sendPost(View view) {
         Log.d("Post text", postText.getText().toString());
         final Post post = new Post(postText.getText().toString(),0,0,
-                Timestamp.now(), new GeoPoint(latitude, longitude), userID);
+                Timestamp.now(), latitude, longitude, userID);
         if (postID == null) {
             firestore.collection("posts").add(post)
                     .addOnCompleteListener(new OnCompleteListener<DocumentReference>() {

@@ -1,41 +1,29 @@
 package com.example.herd;
 
-import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.ListView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
-import com.firebase.ui.firestore.ObservableSnapshotArray;
 import com.firebase.ui.firestore.paging.FirestorePagingAdapter;
 import com.firebase.ui.firestore.paging.FirestorePagingOptions;
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
 import com.google.firebase.Timestamp;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.EventListener;
-import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.FirebaseFirestoreException;
-import com.google.firebase.firestore.QuerySnapshot;
-
-import org.w3c.dom.Text;
 
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
 /*
@@ -149,22 +137,27 @@ public class PostAdapter extends RecyclerView.Adapter<PostAdapter.PostViewHolder
     }
 */
 
-
 public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostViewHolder> {
 
     //Firestore and other class variables
     private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
     private ArrayList<String> postID;
     private OnItemClickListener clickListener;
+    private String userID;
+    private HashMap<Integer, RecyclerView.ViewHolder> holderList;
+    private SharedPreferences sharedPreferences;
 
     //Constructor for Firestore Paging Adapter
     public PostAdapter(@NonNull FirestorePagingOptions<Post> options, ArrayList<String> postID,
-                       OnItemClickListener clickListener) {
+                       SharedPreferences preferences, OnItemClickListener clickListener) {
         super(options);
 
         //Initialize class variables
         this.postID = postID;
+        this.sharedPreferences = preferences;
+        userID = sharedPreferences.getString("User ID", "");
         this.clickListener = clickListener;
+        this.holderList = new HashMap<>();
     }
 
     public PostAdapter(@NonNull FirestorePagingOptions<Post> options, ArrayList<String> postID) {
@@ -172,16 +165,87 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         this.postID = postID;
     }
 
+    public void setPostID(ArrayList<String> postID) {
+        this.postID = postID;
+    }
+
     @Override
-    protected void onBindViewHolder(PostViewHolder holder, int position, Post post) {
+    protected void onBindViewHolder(final PostViewHolder holder, final int position, Post post) {
+        Log.d("Herd", "In onBindViewHolder");
         //Bind data to view holder
         holder.postView.setText(post.getPost());
         holder.score.setText(Integer.toString(post.getScore()));
         holder.numComments.setText(Integer.toString(post.getNumComments()) + " comments");
-        holder.timeFromPost.setText("5m");
+        holder.timeFromPost.setText(calcTimeAgo(post.getTime()));
+        Set<String> likes = new HashSet<String>(sharedPreferences.getStringSet("likes",
+                new HashSet<String>()));
+        Set<String> dislikes = new HashSet<String>(sharedPreferences.getStringSet("dislikes",
+                new HashSet<String>()));
+        //Log.d("Liked posts", likes.toString());
+        //Log.d("Dislikes posts", dislikes.toString());
 
-        //Listen for score and numComments updates
-        updateFields(holder, position);
+        if (likes != null && likes.contains(postID.get(position))) {
+            holder.upvote.setImageResource(R.drawable.upvote_selected);
+        } else {
+            holder.upvote.setImageResource(R.drawable.upvote);
+        }
+
+        if (dislikes != null && dislikes.contains(postID.get(position))) {
+            holder.downvote.setImageResource(R.drawable.downvote_selected);
+        } else {
+            holder.downvote.setImageResource(R.drawable.downvote);
+        }
+
+        holder.postView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                clickListener.onRowClick(v, holder, position);
+            }
+        });
+
+        holder.upvote.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                clickListener.onRowClick(v, holder, position);
+            }
+        });
+
+        holder.downvote.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                clickListener.onRowClick(v, holder, position);
+            }
+        });
+
+        if (!holderList.containsKey(position)) {
+            holderList.put(position, holder);
+        }
+    }
+
+    private RecyclerView.ViewHolder getViewByPosition(int position) {
+        return holderList.get(position);
+    }
+
+    public static String calcTimeAgo(Timestamp postTime) {
+        Date now = new Date();
+        Date postDate = postTime.toDate();
+        long diffInMillies = now.getTime() - postDate.getTime();
+        long days = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS);
+        long hours = TimeUnit.HOURS.convert(diffInMillies, TimeUnit.MILLISECONDS);
+        long minutes = TimeUnit.MINUTES.convert(diffInMillies, TimeUnit.MILLISECONDS);
+        long seconds = TimeUnit.SECONDS.convert(diffInMillies, TimeUnit.MILLISECONDS);
+        long weeks = days/7;
+        if (weeks > 0) {
+            return weeks + (weeks > 1 ? " weeks ago" : " week ago");
+        } else if (days > 0) {
+            return days + (days > 1 ? " days ago" : " day ago");
+        } else if (hours > 0) {
+            return hours + (hours > 1 ? " hours ago" : " hour ago");
+        } else if (minutes > 0){
+            return minutes + (minutes > 1 ? " minutes ago" : " minute ago");
+        } else {
+            return seconds + (seconds > 1 ? " seconds ago" : " second ago");
+        }
     }
 
     @NonNull
@@ -197,14 +261,11 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         return postViewHolder;
     }
 
-    public class PostViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
+    public class PostViewHolder extends RecyclerView.ViewHolder {
         //UI element variables for post view
-        private TextView postView, score, numComments, timeFromPost;
-        private ImageButton upvote, downvote;
-        private LinearLayout post;
-
-        //Variables for tracking if buttons have been clicked
-        private boolean upvoteClicked = false, downvoteClicked = false;
+        public TextView postView, score, numComments, timeFromPost;
+        public ImageButton upvote, downvote;
+        public LinearLayout post;
 
         public PostViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -217,108 +278,6 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
             upvote = itemView.findViewById(R.id.upvote);
             downvote = itemView.findViewById(R.id.downvote);
             post = itemView.findViewById(R.id.postView);
-
-            //Set click listeners for appropriate variables
-            post.setOnClickListener(this);
-            upvote.setOnClickListener(this);
-            downvote.setOnClickListener(this);
         }
-
-        @Override
-        public void onClick(View view) {
-            //Determine which view was selected
-            switch (view.getId()) {
-
-                //A post was selected, return position to calling activity
-                case R.id.postView:
-                    if (clickListener != null)
-                        clickListener.onRowClick(getAdapterPosition());
-                    break;
-
-                //Upvote button selected
-                case R.id.upvote:
-                    //If upvote button wasn't clicked, update the score and change the button
-                    //images as necessary
-                    if (upvoteClicked == false) {
-                        upvoteClicked = true;
-                        updateScore(postID.get(getAdapterPosition()), 1);
-                        ((ImageButton) view).setImageResource(R.drawable.upvote_selected);
-                        if (downvoteClicked == true) {
-                            downvoteClicked = false;
-                            (downvote).setImageResource(R.drawable.downvote);
-                        }
-                    }
-                    break;
-
-                //Downvote button selected
-                case R.id.downvote:
-                    //If downvote button wasn't clicked, update the score and change the button
-                    //images as necessary
-                    if (downvoteClicked == false) {
-                        downvoteClicked = true;
-                        updateScore(postID.get(getAdapterPosition()), -1);
-                        ((ImageButton) view).setImageResource(R.drawable.downvote_selected);
-                        if (upvoteClicked ==  true) {
-                            upvoteClicked = false;
-                            (upvote).setImageResource(R.drawable.upvote);
-                        }
-                    }
-                    break;
-            }
-        }
-
-        //Update the score for the appropriate post by value (1 or -1)
-        private void updateScore(String postID, int value) {
-            firestore.collection("posts").document(postID)
-                    .update("score", FieldValue.increment(value))
-                    .addOnCompleteListener(new OnCompleteListener<Void>() {
-                        @Override
-                        public void onComplete(@NonNull Task<Void> task) {
-                            if (task.isSuccessful()) {
-                                Log.d("Herd", "Post score update successful");
-                            } else {
-                                Log.d("Herd", "Post score update failed");
-                                task.getException().printStackTrace();
-                            }
-                        }
-                    });
-        }
-    }
-
-    //Listen for updates to the post score and number of comments
-    private void updateFields(PostViewHolder holder, int position) {
-        //UI variables
-        final TextView score = holder.score;
-        final TextView numComments = holder.numComments;
-
-        //Firestore listener for document with postID at given position
-        firestore.collection("posts").document(postID.get(position))
-                .addSnapshotListener(new EventListener<DocumentSnapshot>() {
-                    @Override
-                    public void onEvent(DocumentSnapshot snapshot, FirebaseFirestoreException e) {
-                        if (e != null) {
-                            e.printStackTrace();
-                            return;
-                        }
-
-                        if (snapshot != null && snapshot.exists()) {
-                            Log.d("Herd", "Current data: " + snapshot.getData());
-
-                            //If the snapshot score has changed, update the score text
-                            if (snapshot.getLong("score") != Long.parseLong(score.getText().toString())) {
-                                score.setText(snapshot.getLong("score").toString());
-                            }
-
-                            //Parse the number of comments to get int value
-                            String curNumComments = numComments.getText().toString().split(" ")[0];
-                            //If the number of comments has changed, update the view text
-                            if (snapshot.getLong("numComments") != Long.parseLong(curNumComments)) {
-                                numComments.setText(snapshot.getLong("numComments").toString() + " comments");
-                            }
-                        } else {
-                            Log.d("Herd", "Current data: null");
-                        }
-                    }
-                });
     }
 }

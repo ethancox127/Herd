@@ -28,23 +28,27 @@
                 android:id="@+id/toggle_button_group"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center">
+                android:layout_gravity="center"
+                app:singleSelection="true"
+                app:checkedButton="@+id/hotButton">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/hotButton"
-                    style="@style/Widget.MaterialComponents.Button.Icon"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Hot"
-                    android:textColor="@color/cardview_dark_background" />
+                    android:textColor="@color/cardview_dark_background"
+                    android:backgroundTint="@color/colorPrimaryDark"/>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/newButton"
-                    style="@style/Widget.MaterialComponents.Button.Icon"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="New"
-                    android:textColor="@color/cardview_dark_background" />
+                    android:textColor="@color/cardview_dark_background"
+                    android:backgroundTint="@color/colorPrimaryDark"/>
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
         </com.google.android.material.appbar.CollapsingToolbarLayout>

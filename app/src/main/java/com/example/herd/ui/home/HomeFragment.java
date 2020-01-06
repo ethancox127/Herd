@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,6 +25,7 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.fragment.app.Fragment;
 import androidx.paging.PagedList;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -39,16 +41,19 @@ import com.example.herd.R;
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.firebase.ui.firestore.SnapshotParser;
+import com.firebase.ui.firestore.paging.DefaultSnapshotDiffCallback;
 import com.firebase.ui.firestore.paging.FirestorePagingOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.material.appbar.AppBarLayout;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.DocumentChange;
+import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FieldValue;
@@ -56,8 +61,15 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.FirebaseFirestoreException;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QuerySnapshot;
+import com.google.firebase.firestore.SetOptions;
+import com.google.firebase.firestore.Source;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 public class HomeFragment extends Fragment implements View.OnClickListener, SwipeRefreshLayout.OnRefreshListener {
 
@@ -75,19 +87,30 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private RecyclerView postsRecyclerView;
     private PostAdapter postAdapter;
     private LinearLayoutManager postsLayoutManager;
-    private ArrayList<String> postID = new ArrayList<>();
-    private ArrayList<Post> postList = new ArrayList<>();
 
     //Timestamp variable for differentiating between posts added after last load
     public static Timestamp curTime;
 
-    //SharedPreferences instance
+    //SharedPreferences instance and editor
     private SharedPreferences preferences;
+    private SharedPreferences.Editor editor;
+
+    //Posts and related variables variables
+    private ArrayList<String> postID = new ArrayList<>();
+    private ArrayList<Post> postList = new ArrayList<>();
+    private Set<String> likes;
+    private Set<String> dislikes;
+    private int numNewPosts = 0;
+    private String userID;
+    private int numLikes = 0, numDisliked = 0;
+
+    //Private query flags
+    private String type = "hot";
+    private double distance = Double.POSITIVE_INFINITY;
+    private double time = Double.POSITIVE_INFINITY;
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
-
-        Log.d("Home fragment", "In on create view");
 
         //Inflate the fragment within
         final View root = inflater.inflate(R.layout.fragment_home, container, false);
@@ -103,6 +126,16 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
         //Initialize the SharedPreferences
         preferences = getContext().getSharedPreferences("MyPref", Context.MODE_PRIVATE);
+        editor = preferences.edit();
+
+        //Get the userID and number of liked and disliked posts
+        likes = preferences.getStringSet("likes", new HashSet<String>());
+        dislikes = preferences.getStringSet("dislikes", new HashSet<String>());
+        Log.d("Likes posts", likes.toString());
+        Log.d("Disliked posts", dislikes.toString());
+        userID = preferences.getString("User ID", "");
+        numLikes = preferences.getInt("likes_size", 0);
+        numDisliked = preferences.getInt("dislikes_size", 0);
 
         //Get curTime to separate between posts already in firestore and those received after
         curTime = Timestamp.now();
@@ -120,19 +153,19 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         swipeContainer.setOnRefreshListener(this);
 
         //Load existing posts and listen for new posts
-        listenForHotPosts();
+        displayPosts();
 
         return root;
     }
 
-    private void listenForHotPosts() {
+    //Helper function for displaying posts
+    private void displayPosts() {
 
-        //Query for top posts
-        Query query = firestore.collection("posts")
-                .orderBy("score", Query.Direction.DESCENDING);
+        //Get query given flags
+        Query query = updateQuery();
 
         //Create paged list configurations
-        PagedList.Config config = new PagedList.Config.Builder()
+        final PagedList.Config config = new PagedList.Config.Builder()
                 .setEnablePlaceholders(false)
                 .setPrefetchDistance(10)
                 .setPageSize(10)
@@ -145,27 +178,110 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                     @NonNull
                     @Override
                     public Post parseSnapshot(@NonNull DocumentSnapshot snapshot) {
+                        Log.d("Herd", "In parseSnapshot");
+                        Log.d("Herd", snapshot.getData().toString());
+                        int index = postID.indexOf(snapshot.getId());
                         Post post = snapshot.toObject(Post.class);
-                        postList.add(post);
-                        postID.add(snapshot.getId());
+                        Log.d("Post", post.toString());
+                        if (index != -1) {
+                            postList.set(index, post);
+                        } else {
+                            postList.add(post);
+                            postID.add(snapshot.getId());
+                            if (numNewPosts == 0 && post.getUserID() != userID
+                                    && post.getTime().toDate().compareTo(curTime.toDate()) > 0) {
+                                addButton();
+                            }
+                            numNewPosts++;
+                        }
                         return post;
                     }
                 })
                 .build();
 
-        postList.clear();
-        postID.clear();
-
         //Create Post adapter
-        postAdapter = new PostAdapter(options, postID, new OnItemClickListener() {
+        postAdapter = new PostAdapter(options, postID, preferences, new OnItemClickListener() {
             @Override
             //Called when a post is clicked
             //Get post and post ID at that position and start activity to display post and comments
-            public void onRowClick(int position) {
-                Intent intent = new Intent(getContext(), PostCommentsActivity.class);
-                intent.putExtra("Post", postList.get(position));
-                intent.putExtra("Post ID", postID.get(position));
-                startActivity(intent);
+            public void onRowClick(View view, PostAdapter.PostViewHolder holder, int position) {
+
+                String id = postID.get(position);
+                Set<String> likeSet = new HashSet<String>(preferences.getStringSet("likes",
+                        new HashSet<String>()));
+                Set<String> dislikeSet = new HashSet<String>(preferences.getStringSet("dislikes",
+                        new HashSet<String>()));
+                int score =  Integer.valueOf(holder.score.getText().toString());
+
+                switch (view.getId()) {
+                    //Post selected
+                    case R.id.postView:
+                        Intent intent = new Intent(getContext(), PostCommentsActivity.class);
+                        intent.putExtra("Post", postList.get(position));
+                        intent.putExtra("Post ID", id);
+                        startActivity(intent);
+                        break;
+
+                    //Upvote button selected
+                    case R.id.upvote:
+
+                        //If upvote button is already selected notify user
+                        if (likeSet != null && likeSet.contains(id)) {
+
+                            Toast.makeText(getContext(), "You already liked that post",
+                                    Toast.LENGTH_SHORT).show();
+
+                        } else {
+
+                            likeSet.add(id);
+                            editor.putStringSet("likes", new HashSet<String>(likeSet));
+                            editor.apply();
+                            editor.commit();
+                            holder.upvote.setImageResource(R.drawable.upvote_selected);
+                            score++;
+                            holder.score.setText(Integer.toString(score));
+
+                            if (dislikeSet != null && dislikeSet.contains(id)) {
+                                dislikeSet.remove(id);
+                                editor.putStringSet("dislikes", new HashSet<String>(dislikeSet));
+                                editor.apply();
+                                editor.commit();
+                                holder.downvote.setImageResource(R.drawable.downvote);
+                            }
+
+                            //Update user's liked posts
+                            updateLikes(id);
+                        }
+                        break;
+
+                    //Downvote button selected
+                    case R.id.downvote:
+
+                        if (dislikeSet != null && dislikeSet.contains(id)) {
+                            Toast.makeText(getContext(), "You already disliked that post",
+                                    Toast.LENGTH_SHORT).show();
+                        } else {
+
+                            dislikeSet.add(id);
+                            editor.putStringSet("dislikes", new HashSet<String>(dislikeSet));
+                            editor.apply();
+                            editor.commit();
+                            holder.downvote.setImageResource(R.drawable.downvote_selected);
+                            score--;
+                            holder.score.setText(Integer.toString(score));
+
+                            if (likeSet != null && likeSet.contains(id)) {
+                                likeSet.remove(id);
+                                editor.putStringSet("likes", new HashSet<String>(likeSet));
+                                editor.apply();
+                                editor.commit();
+                                holder.upvote.setImageResource(R.drawable.upvote);
+                            }
+
+                            updateDislikes(id);
+                        }
+                        break;
+                }
             }
         });
 
@@ -177,75 +293,103 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         postsRecyclerView.addItemDecoration(decoration);
     }
 
-    private void listenForNewPosts() {
-        //Query for new posts
-        Query query = firestore.collection("posts")
-                .orderBy("time", Query.Direction.DESCENDING);
+    //Helper function managing the query for the adapter
+    private Query updateQuery() {
+        if (type == "hot") {
+            return firestore.collection("posts")
+                    .orderBy("score", Query.Direction.DESCENDING);
+        } else {
+            return firestore.collection("posts")
+                    .orderBy("time", Query.Direction.DESCENDING);
+        }
+    }
 
-        //Create paged list configurations
-        PagedList.Config config = new PagedList.Config.Builder()
-                .setEnablePlaceholders(false)
-                .setPrefetchDistance(10)
-                .setPageSize(10)
-                .build();
-
-        //Create Firestore Paging Options and parse posts in postsList and PostID's for other use
-        FirestorePagingOptions<Post> options = new FirestorePagingOptions.Builder<Post>()
-                .setLifecycleOwner(this)
-                .setQuery(query, config, new SnapshotParser<Post>() {
-                    @NonNull
+    //Update the score for the appropriate post by value (1 or -1)
+    private void updateScore(String postID, int value) {
+        firestore.collection("posts").document(postID)
+                .update("score", FieldValue.increment(value))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
                     @Override
-                    public Post parseSnapshot(@NonNull DocumentSnapshot snapshot) {
-                        Post post = snapshot.toObject(Post.class);
-                        postList.add(post);
-                        postID.add(snapshot.getId());
-                        return post;
-                    }
-                })
-                .build();
-
-        postID.clear();
-        postList.clear();
-
-        //Create Post adapter
-        postAdapter = new PostAdapter(options, postID, new OnItemClickListener() {
-            @Override
-            //Called when a post is clicked
-            //Get post and post ID at that position and start activity to display post and comments
-            public void onRowClick(int position) {
-                Intent intent = new Intent(getContext(), PostCommentsActivity.class);
-                intent.putExtra("Post", postList.get(position));
-                intent.putExtra("Post ID", postID.get(position));
-                startActivity(intent);
-            }
-        });
-
-        //Set the adapter for the recycler view and add the decorations and layout manager
-        postsRecyclerView.setAdapter(postAdapter);
-        postsRecyclerView.setLayoutManager(postsLayoutManager);
-        DividerItemDecoration decoration = new DividerItemDecoration(postsRecyclerView.getContext(),
-                DividerItemDecoration.VERTICAL);
-        postsRecyclerView.addItemDecoration(decoration);
-
-        //Query for new posts that were received after the user entered this fragment
-        firestore.collection("posts")
-                .orderBy("time", Query.Direction.DESCENDING)
-                .whereGreaterThan("time", curTime)
-                .addSnapshotListener(new EventListener<QuerySnapshot>() {
-                    @Override
-                    public void onEvent(@Nullable QuerySnapshot snapshots,
-                                        @Nullable FirebaseFirestoreException e) {
-                        if (e != null) {
-                            e.printStackTrace();
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Post score update successful");
+                        } else {
+                            Log.d("Herd", "Post score update failed");
+                            task.getException().printStackTrace();
                         }
+                    }
+                });
+    }
 
-                        //If the new posts weren't entered by the user display the new posts button
-                        if (snapshots != null && snapshots.size() > 0) {
-                            DocumentSnapshot doc = snapshots.getDocuments().get(0);
-                            String userID = preferences.getString("User ID", "");
-                            if (doc.getData().get("userID") != userID) {
-                                addButton();
+    private void updateLikes(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("likes", FieldValue.arrayUnion(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Updated user's liked posts");
+                            if (dislikes != null && dislikes.contains(id)) {
+                                removeDislike(id);
                             }
+                            updateScore(id, 1);
+                        } else {
+                            Log.d("Herd", "Unable to update user's liked posts");
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void removeLike(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("likes", FieldValue.arrayRemove(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Updated user's liked posts");
+                        } else {
+                            Log.d("Herd", "Unable to update user's liked posts");
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void updateDislikes(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("dislikes", FieldValue.arrayUnion(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Dislike added");
+                            if (likes != null && likes.contains(id)) {
+                                removeLike(id);
+                            }
+                            updateScore(id, -1);
+                        } else {
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void removeDislike(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("dislikes", FieldValue.arrayRemove(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Dislike removed");
+                        } else {
+                            task.getException().printStackTrace();
                         }
                     }
                 });
@@ -267,6 +411,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     //On Click implementation for fragment buttons
     @Override
     public void onClick(View view) {
+
         switch (view.getId()) {
 
             //If the add post button is clicked go to activity where user can add a post
@@ -278,20 +423,35 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
              //If the new posts button is clicked refresh the adapter and remove the button
             case R.id.newPostsButton:
-                postAdapter.refresh();
+                postList.clear();
+                postID.clear();
                 newPostsButton.setVisibility(View.GONE);
-
+                postAdapter.refresh();
                 //Update the time to listen for new posts after
                 curTime = Timestamp.now();
 
             case R.id.newButton:
-                curTime = Timestamp.now();
-                listenForNewPosts();
+                if (!newButton.isChecked()) {
+                    newButton.setChecked(true);
+                } else {
+                    postList.clear();
+                    postID.clear();
+                    type = "new";
+                    curTime = Timestamp.now();
+                    displayPosts();
+                }
                 break;
 
             case R.id.hotButton:
-                curTime = Timestamp.now();
-                listenForHotPosts();
+                if (!hotButton.isChecked())  {
+                    hotButton.setChecked(true);
+                } else {
+                    postList.clear();
+                    postID.clear();
+                    type = "hot";
+                    curTime = Timestamp.now();
+                    displayPosts();
+                }
                 break;
         }
     }
@@ -302,8 +462,11 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         super.onStart();
         //Activity starting, listen for new posts
         postAdapter.startListening();
-        if (newButton.isChecked())
+        if (numNewPosts > 0) {
+            postList.clear();
+            postID.clear();
             postAdapter.refresh();
+        }
     }
 
     @Override
@@ -313,11 +476,14 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         //Activity stopping, stop listening for new posts
         postAdapter.stopListening();
         newPostsButton.setVisibility(View.GONE);
+        editor.commit();
     }
 
     @Override
     public void onRefresh() {
         //Refresh the adapter and remove the spinner when done
+        postList.clear();
+        postID.clear();
         postAdapter.refresh();
         swipeContainer.setRefreshing(false);
     }

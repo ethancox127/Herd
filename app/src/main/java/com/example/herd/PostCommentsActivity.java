@@ -16,6 +16,7 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.firebase.ui.firestore.SnapshotParser;
 import com.firebase.ui.firestore.paging.FirestorePagingOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
@@ -158,7 +159,6 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
     @Override
     public void onRefresh() {
         //Refresh the adapter and remove the spinner when done
-        commentAdapter.refresh();
         swipeRefreshLayout.setRefreshing(false);
     }
 }

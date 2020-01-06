@@ -18,19 +18,22 @@ public class Post implements Parcelable {
     private int score;
     private int numComments;
     private Timestamp time;
-    private GeoPoint point;
+    private Double latitude;
+    private Double longitude;
     private String userID;
 
     public Post() {
 
     }
 
-    public Post(String post, int score, int numComments, Timestamp time, GeoPoint point, String userId) {
+    public Post(String post, int score, int numComments, Timestamp time, Double latitude,
+                Double longitude, String userId) {
         this.post = post;
         this.score = score;
         this.numComments = numComments;
         this.time = time;
-        this.point = point;
+        this.latitude = latitude;
+        this.longitude = longitude;
         this.userID = userId;
     }
 
@@ -39,6 +42,8 @@ public class Post implements Parcelable {
         score = in.readInt();
         numComments = in.readInt();
         time = in.readParcelable(Timestamp.class.getClassLoader());
+        latitude = in.readDouble();
+        longitude = in.readDouble();
         userID = in.readString();
     }
 
@@ -53,21 +58,6 @@ public class Post implements Parcelable {
             return new Post[size];
         }
     };
-
-    private static String calcTimeAgo(Long postTime) {
-        if (postTime != 0) {
-            //Get current timestamp
-            long curTime = System.currentTimeMillis()/1000;
-            long diffTime = curTime - postTime;
-            String difference = String.format("%02d:%02d:%02d",
-                    TimeUnit.MILLISECONDS.toHours(diffTime),
-                    TimeUnit.MILLISECONDS.toMinutes(diffTime) % TimeUnit.HOURS.toMinutes(1),
-                    TimeUnit.MILLISECONDS.toSeconds(diffTime) % TimeUnit.MINUTES.toSeconds(1));
-            return difference;
-        } else {
-            return "0 sec";
-        }
-    }
 
     public String getPost() {
         return this.post;
@@ -97,20 +87,20 @@ public class Post implements Parcelable {
         return this.time;
     }
 
-    public void setTime(Timestamp time) {
-        this.time = time;
+    public Double getLatitude() {
+        return this.latitude;
     }
 
-    public GeoPoint getPoint() {
-        if (this.point == null) {
-            return new GeoPoint(0, 0);
-        } else {
-            return this.point;
-        }
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
     }
 
-    public void setPoint(GeoPoint point) {
-        this.point = point;
+    public Double getLongitude() {
+        return this.longitude;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
     }
 
     public String getUserID() {
@@ -136,12 +126,15 @@ public class Post implements Parcelable {
         dest.writeInt(score);
         dest.writeInt(numComments);
         dest.writeParcelable(time, flags);
+        dest.writeDouble(latitude);
+        dest.writeDouble(longitude);
         dest.writeString(userID);
     }
 
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("post = " + this.post + "\n");
+        sb.append("post = " + this.post + " ");
+        sb.append("score = " + this.score);
         return sb.toString();
     }
 }
