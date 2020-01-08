@@ -227,6 +227,12 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         }
     }
 
+    @Override
+    public void refresh() {
+        super.refresh();
+        holderList.clear();
+    }
+
     @NonNull
     @Override
     public PostViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {

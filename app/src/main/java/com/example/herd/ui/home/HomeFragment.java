@@ -204,6 +204,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
             //Get post and post ID at that position and start activity to display post and comments
             public void onRowClick(View view, int position) {
 
+                Log.d("Post id", postID.toString());
                 String id = postID.get(position);
                 PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
                 Set<String> likeSet = new HashSet<String>(preferences.getStringSet("likes",
@@ -211,6 +212,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                 Set<String> dislikeSet = new HashSet<String>(preferences.getStringSet("dislikes",
                         new HashSet<String>()));
                 int score =  Integer.valueOf(holder.score.getText().toString());
+                Log.d("Herd", "position: " + position);
+                Log.d("score", Integer.toString(score));
 
                 switch (view.getId()) {
                     //Post selected
@@ -312,16 +315,39 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
                         if (queryDocumentSnapshots != null)  {
                             for (DocumentChange dc : queryDocumentSnapshots.getDocumentChanges())  {
+                                Post post = dc.getDocument().toObject(Post.class);
                                 switch (dc.getType()) {
                                     case ADDED:
-                                        Post post = dc.getDocument().toObject(Post.class);
-                                        if (numNewPosts == 0 && post.getUserID() != userID) {
-                                            addButton();
+                                        if (!postID.contains(dc.getDocument().getId())) {
+                                            postList.add(post);
+                                            postID.add(dc.getDocument().getId());
                                         }
-                                        numNewPosts++;
+                                        if (post.getTime().toDate().after(curTime.toDate())) {
+                                            if (numNewPosts == 0 && post.getUserID() != userID) {
+                                                addButton();
+                                            }
+                                            numNewPosts++;
+                                        }
                                         break;
                                     case MODIFIED:
                                         Log.d("Herd", "post has been modified");
+                                        int position = postID.indexOf(dc.getDocument().getId());
+                                        if (position != -1) {
+                                            PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
+                                            if (dc.getDocument().getLong("score") !=
+                                                    Long.parseLong(holder.score.getText().toString())) {
+                                                holder.score.setText(dc.getDocument().getLong("score").toString());
+                                            }
+                                            Log.d("Before split", holder.numComments.getText().toString());
+                                            String curNumComments = holder.numComments.getText().toString()
+                                                    .split(" ")[0];
+                                            Log.d("After split", curNumComments);
+                                            if (dc.getDocument().getLong("numComments") !=
+                                                    Long.parseLong(curNumComments)) {
+                                                holder.numComments.setText(dc.getDocument().getLong("numComments")
+                                                        .toString() + " comments");
+                                            }
+                                        }
                                         break;
                                 }
                             }
@@ -527,6 +553,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         //Refresh the adapter and remove the spinner when done
         postList.clear();
         postID.clear();
+        curTime = Timestamp.now();
         postAdapter.refresh();
         swipeContainer.setRefreshing(false);
     }
