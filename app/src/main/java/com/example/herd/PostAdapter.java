@@ -144,7 +144,7 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
     private ArrayList<String> postID;
     private OnItemClickListener clickListener;
     private String userID;
-    private HashMap<Integer, RecyclerView.ViewHolder> holderList;
+    private HashMap<Integer, PostViewHolder> holderList;
     private SharedPreferences sharedPreferences;
 
     //Constructor for Firestore Paging Adapter
@@ -196,33 +196,12 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
             holder.downvote.setImageResource(R.drawable.downvote);
         }
 
-        holder.postView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                clickListener.onRowClick(v, holder, position);
-            }
-        });
-
-        holder.upvote.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                clickListener.onRowClick(v, holder, position);
-            }
-        });
-
-        holder.downvote.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                clickListener.onRowClick(v, holder, position);
-            }
-        });
-
         if (!holderList.containsKey(position)) {
             holderList.put(position, holder);
         }
     }
 
-    private RecyclerView.ViewHolder getViewByPosition(int position) {
+    public PostViewHolder getViewByPosition(int position) {
         return holderList.get(position);
     }
 
@@ -261,7 +240,7 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         return postViewHolder;
     }
 
-    public class PostViewHolder extends RecyclerView.ViewHolder {
+    public class PostViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
         //UI element variables for post view
         public TextView postView, score, numComments, timeFromPost;
         public ImageButton upvote, downvote;
@@ -278,6 +257,15 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
             upvote = itemView.findViewById(R.id.upvote);
             downvote = itemView.findViewById(R.id.downvote);
             post = itemView.findViewById(R.id.postView);
+
+            postView.setOnClickListener(this);
+            upvote.setOnClickListener(this);
+            downvote.setOnClickListener(this);
+        }
+
+        @Override
+        public void onClick(View v) {
+            clickListener.onRowClick(v, getAdapterPosition());
         }
     }
 }

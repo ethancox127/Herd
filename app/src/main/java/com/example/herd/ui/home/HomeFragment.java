@@ -59,6 +59,7 @@ import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QuerySnapshot;
 import com.google.firebase.firestore.SetOptions;
@@ -108,6 +109,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private String type = "hot";
     private double distance = Double.POSITIVE_INFINITY;
     private double time = Double.POSITIVE_INFINITY;
+    private Query newPosts;
+    private ListenerRegistration registration;
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -162,7 +165,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private void displayPosts() {
 
         //Get query given flags
-        Query query = updateQuery();
+        final Query query = updateQuery();
 
         //Create paged list configurations
         final PagedList.Config config = new PagedList.Config.Builder()
@@ -188,11 +191,6 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                         } else {
                             postList.add(post);
                             postID.add(snapshot.getId());
-                            if (numNewPosts == 0 && post.getUserID() != userID
-                                    && post.getTime().toDate().compareTo(curTime.toDate()) > 0) {
-                                addButton();
-                            }
-                            numNewPosts++;
                         }
                         return post;
                     }
@@ -204,9 +202,10 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
             @Override
             //Called when a post is clicked
             //Get post and post ID at that position and start activity to display post and comments
-            public void onRowClick(View view, PostAdapter.PostViewHolder holder, int position) {
+            public void onRowClick(View view, int position) {
 
                 String id = postID.get(position);
+                PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
                 Set<String> likeSet = new HashSet<String>(preferences.getStringSet("likes",
                         new HashSet<String>()));
                 Set<String> dislikeSet = new HashSet<String>(preferences.getStringSet("dislikes",
@@ -291,6 +290,46 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         DividerItemDecoration decoration = new DividerItemDecoration(postsRecyclerView.getContext(),
                 DividerItemDecoration.VERTICAL);
         postsRecyclerView.addItemDecoration(decoration);
+
+        if (registration != null) {
+            registration.remove();
+        }
+        listenForNewPosts();
+    }
+
+    private void listenForNewPosts() {
+        newPosts = firestore.collection("posts")
+                .orderBy("time", Query.Direction.DESCENDING);
+
+        registration = newPosts.addSnapshotListener(
+                new EventListener<QuerySnapshot>() {
+                    @Override
+                    public void onEvent(@Nullable QuerySnapshot queryDocumentSnapshots,
+                                        @Nullable FirebaseFirestoreException e) {
+                        if (e != null) {
+                            e.printStackTrace();
+                        }
+
+                        if (queryDocumentSnapshots != null)  {
+                            for (DocumentChange dc : queryDocumentSnapshots.getDocumentChanges())  {
+                                switch (dc.getType()) {
+                                    case ADDED:
+                                        Post post = dc.getDocument().toObject(Post.class);
+                                        if (numNewPosts == 0 && post.getUserID() != userID) {
+                                            addButton();
+                                        }
+                                        numNewPosts++;
+                                        break;
+                                    case MODIFIED:
+                                        Log.d("Herd", "post has been modified");
+                                        break;
+                                }
+                            }
+                        } else {
+                            Log.d("Herd", "Could not get new data");
+                        }
+                    }
+                });
     }
 
     //Helper function managing the query for the adapter
@@ -300,6 +339,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                     .orderBy("score", Query.Direction.DESCENDING);
         } else {
             return firestore.collection("posts")
+                    .whereLessThan("time", curTime)
                     .orderBy("time", Query.Direction.DESCENDING);
         }
     }
@@ -426,9 +466,11 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                 postList.clear();
                 postID.clear();
                 newPostsButton.setVisibility(View.GONE);
-                postAdapter.refresh();
                 //Update the time to listen for new posts after
                 curTime = Timestamp.now();
+                postAdapter.refresh();
+                registration.remove();
+                listenForNewPosts();
 
             case R.id.newButton:
                 if (!newButton.isChecked()) {
@@ -465,6 +507,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         if (numNewPosts > 0) {
             postList.clear();
             postID.clear();
+            curTime = Timestamp.now();
             postAdapter.refresh();
         }
     }
