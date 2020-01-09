@@ -134,7 +134,8 @@ public class Post implements Parcelable {
     public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append("post = " + this.post + " ");
-        sb.append("score = " + this.score);
+        sb.append("score = " + this.score + " ");
+        sb.append("numComments = " + this.numComments);
         return sb.toString();
     }
 }

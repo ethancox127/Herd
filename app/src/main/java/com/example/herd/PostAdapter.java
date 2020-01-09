@@ -264,7 +264,7 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
             downvote = itemView.findViewById(R.id.downvote);
             post = itemView.findViewById(R.id.postView);
 
-            postView.setOnClickListener(this);
+            post.setOnClickListener(this);
             upvote.setOnClickListener(this);
             downvote.setOnClickListener(this);
         }

@@ -99,6 +99,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     //Posts and related variables variables
     private ArrayList<String> postID = new ArrayList<>();
     private ArrayList<Post> postList = new ArrayList<>();
+    private ArrayList<String> newPostID = new ArrayList<>();
+    private ArrayList<Post> newPostList = new ArrayList<>();
     private Set<String> likes;
     private Set<String> dislikes;
     private int numNewPosts = 0;
@@ -190,6 +192,17 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                         if (index != -1) {
                             postList.set(index, post);
                         } else {
+                            int newIndex = newPostID.indexOf(snapshot.getId());
+                            Log.d("New Index", Integer.toString(newIndex));
+                            Log.d("New posts ID's", newPostID.toString());
+                            if (newIndex != -1) {
+                                Log.d("Parse snapshot", "in second if");
+                                Post post1 = newPostList.remove(newIndex);
+                                Log.d("New post", post1.toString());
+                                postList.add(post1);
+                                postID.add(newPostID.remove(newIndex));
+                                return post1;
+                            }
                             postList.add(post);
                             postID.add(snapshot.getId());
                         }
@@ -298,7 +311,9 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         if (registration != null) {
             registration.remove();
         }
-        listenForNewPosts();
+        if (type == "new") {
+            listenForNewPosts();
+        }
     }
 
     private void listenForNewPosts() {
@@ -319,10 +334,10 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                                 Post post = dc.getDocument().toObject(Post.class);
                                 switch (dc.getType()) {
                                     case ADDED:
-                                        /*if (!postID.contains(dc.getDocument().getId())) {
-                                            postList.add(post);
-                                            postID.add(dc.getDocument().getId());
-                                        }*/
+                                        if (!postID.contains(dc.getDocument().getId())) {
+                                            newPostList.add(post);
+                                            newPostID.add(dc.getDocument().getId());
+                                        }
                                         if (post.getTime().toDate().after(curTime.toDate())) {
                                             if (numNewPosts == 0 && post.getUserID() != userID) {
                                                 addButton();
@@ -333,6 +348,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                                     case MODIFIED:
                                         Log.d("Herd", "post has been modified");
                                         int position = postID.indexOf(dc.getDocument().getId());
+                                        int newPos = newPostID.indexOf(dc.getDocument().getId());
                                         if (position != -1) {
                                             PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
                                             if (dc.getDocument().getLong("score") !=
@@ -348,6 +364,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                                                 holder.numComments.setText(dc.getDocument().getLong("numComments")
                                                         .toString() + " comments");
                                             }
+                                        } else if (newPos != -1) {
+                                            newPostList.set(newPos, dc.getDocument().toObject(Post.class));
                                         }
                                         break;
                                 }
