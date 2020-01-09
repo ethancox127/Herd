@@ -186,6 +186,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                         int index = postID.indexOf(snapshot.getId());
                         Post post = snapshot.toObject(Post.class);
                         Log.d("Post", post.toString());
+                        Log.d("Index", Integer.toString(index));
                         if (index != -1) {
                             postList.set(index, post);
                         } else {
@@ -318,10 +319,10 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                                 Post post = dc.getDocument().toObject(Post.class);
                                 switch (dc.getType()) {
                                     case ADDED:
-                                        if (!postID.contains(dc.getDocument().getId())) {
+                                        /*if (!postID.contains(dc.getDocument().getId())) {
                                             postList.add(post);
                                             postID.add(dc.getDocument().getId());
-                                        }
+                                        }*/
                                         if (post.getTime().toDate().after(curTime.toDate())) {
                                             if (numNewPosts == 0 && post.getUserID() != userID) {
                                                 addButton();
