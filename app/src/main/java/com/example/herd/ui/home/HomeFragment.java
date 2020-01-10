@@ -1,19 +1,26 @@
 package com.example.herd.ui.home;
 
+import android.app.ActionBar;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.drawable.ColorDrawable;
 import android.media.Image;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -80,6 +87,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private ExtendedFloatingActionButton newPostsButton;
     private SwipeRefreshLayout swipeContainer;
     private MaterialButton hotButton, newButton;
+    private PopupWindow popupWindow;
 
     //Firebase variables
     private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
@@ -491,6 +499,18 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
         Log.d("Herd", "In onCreateOptionsMenu");
         inflater.inflate(R.menu.filter_menu, menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.filter) {
+            Dialog dialog = new Dialog(getContext());
+            dialog.setContentView(R.layout.filter_options);
+            dialog.show();
+            return true;
+        } else {
+            return super.onOptionsItemSelected(item);
+        }
     }
 
     //On Click implementation for fragment buttons
