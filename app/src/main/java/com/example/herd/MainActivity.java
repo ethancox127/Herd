@@ -60,6 +60,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        Log.d("Herd", "Main onCreate");
+
         //Initialize the SharedPreferences and the editor for them
         sharedPreferences = getApplicationContext().getSharedPreferences("MyPref", MODE_PRIVATE);
         editor = sharedPreferences.edit();
@@ -267,5 +269,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
+        Log.d("Herd", "Main onStart");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.d("Herd", "Main onResume");
     }
 }

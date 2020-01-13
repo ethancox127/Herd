@@ -16,10 +16,12 @@ import com.example.herd.ui.home.HomeFragment;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.Timestamp;
+import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.GeoPoint;
+import com.google.firebase.firestore.Query;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -63,7 +65,6 @@ public class AddPostActivity extends AppCompatActivity {
                         public void onComplete(@NonNull Task<DocumentReference> task) {
                             if (task.isSuccessful()) {
                                 Log.d("Herd", "Post added successfully");
-                                HomeFragment.curTime = Timestamp.now();
                                 finish();
                             } else {
                                 task.getException().printStackTrace();

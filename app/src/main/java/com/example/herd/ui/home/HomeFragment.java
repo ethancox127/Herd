@@ -1,11 +1,18 @@
 package com.example.herd.ui.home;
 
+import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.ActionBar;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.media.Image;
 import android.os.Build;
 import android.os.Bundle;
@@ -22,6 +29,7 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -30,6 +38,8 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.paging.PagedList;
 import androidx.recyclerview.widget.DiffUtil;
@@ -40,10 +50,12 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.example.herd.AddPostActivity;
 import com.example.herd.CallbackInterface;
+import com.example.herd.MainActivity;
 import com.example.herd.OnItemClickListener;
 import com.example.herd.Post;
 import com.example.herd.PostAdapter;
 import com.example.herd.PostCommentsActivity;
+import com.example.herd.PostsViewerActivity;
 import com.example.herd.R;
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
@@ -59,6 +71,7 @@ import com.google.android.material.floatingactionbutton.ExtendedFloatingActionBu
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
@@ -66,6 +79,7 @@ import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.GeoPoint;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QuerySnapshot;
@@ -113,17 +127,27 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private Set<String> dislikes;
     private int numNewPosts = 0;
     private String userID;
-    private int numLikes = 0, numDisliked = 0;
 
     //Private query flags
     private String type = "hot";
-    private double distance = Double.POSITIVE_INFINITY;
-    private double time = Double.POSITIVE_INFINITY;
+    private int distance = 10;
+    private int time = 12;
     private Query newPosts;
     private ListenerRegistration registration;
 
+    //Location variables
+    private LocationManager locationManager;
+    private LocationListener locationListener;
+    private Location location;
+    private float latitude, longitude, prevLat, prevLon;
+
+    //Permission codes
+    private final int ACCESS_FINE_LOCATION = 1;
+
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
+
+        Log.d("Herd", "Home fragment onCreateView");
 
         //Inflate the fragment within
         final View root = inflater.inflate(R.layout.fragment_home, container, false);
@@ -147,8 +171,8 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         Log.d("Likes posts", likes.toString());
         Log.d("Disliked posts", dislikes.toString());
         userID = preferences.getString("User ID", "");
-        numLikes = preferences.getInt("likes_size", 0);
-        numDisliked = preferences.getInt("dislikes_size", 0);
+        prevLat = preferences.getFloat("latitude", 0);
+        prevLon = preferences.getFloat("longitude", 0);
 
         //Get curTime to separate between posts already in firestore and those received after
         curTime = Timestamp.now();
@@ -165,10 +189,109 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         newButton.setOnClickListener(this);
         swipeContainer.setOnRefreshListener(this);
 
+        setUpLocationHandlers();
+        requestFineLocation();
+
         //Load existing posts and listen for new posts
         displayPosts();
 
         return root;
+    }
+
+    //Initialized the locationListener and locationManager
+    private void setUpLocationHandlers() {
+        locationListener  = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location location) {
+
+            }
+
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) { }
+
+            @Override
+            public void onProviderEnabled(String provider) { }
+
+            @Override
+            public void onProviderDisabled(String provider) { }
+        };
+
+        locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
+    }
+
+    //Handler method for requesting the Access Fine Location permission
+    private void requestFineLocation() {
+        System.out.println("In requestFineLocation");
+        //Check if user has granted location permissions
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            //Request the fine location permission so I can access their location
+            ActivityCompat.requestPermissions(getActivity(),
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, ACCESS_FINE_LOCATION);
+        } else {
+
+            //Request location updates so that the user's current location will not be null
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+                    1000, 0, locationListener);
+
+            //Get the user's location
+            location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+
+            //Get the user's latitude and longitude and create the firestore Geopoint
+            latitude = (float) location.getLatitude();
+            longitude = (float) location.getLongitude();
+
+            if (prevLat != latitude || prevLon != longitude) {
+                Log.d("longitude", Double.toString(location.getLongitude()));
+                Log.d("latitude", Double.toString(location.getLatitude()));
+
+                //Add the latitude and longitude to the Shared Preferences
+                editor.putFloat("latitude", latitude);
+                editor.putFloat("longitude", longitude);
+                editor.commit();
+            }
+        }
+    }
+
+    //Handle permission request results
+    @TargetApi(Build.VERSION_CODES.M)
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case ACCESS_FINE_LOCATION: {
+                //Check that the fine location permission has been properly granted
+                if (grantResults.length > 0 && getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED) {
+
+                    //Request location updates so that the user's current location will not be null
+                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+                            1000, 0, locationListener);
+
+                    //Get the user's location
+                    location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+
+                    //Get the user's latitude and longitude and create the firestore Geopoint
+                    latitude = (float) location.getLatitude();
+                    longitude = (float) location.getLongitude();
+
+                    if (prevLat != latitude || prevLon != longitude) {
+                        Log.d("longitude", Double.toString(location.getLongitude()));
+                        Log.d("latitude", Double.toString(location.getLatitude()));
+
+                        //Add the latitude and longitude to the Shared Preferences
+                        editor.putFloat("latitude", latitude);
+                        editor.putFloat("longitude", longitude);
+                        editor.commit();
+                    }
+                } else {
+                    //Location permission has not been granted, notify user
+                    Toast.makeText(getContext(), "Location not granted, won't query for posts near you",
+                            Toast.LENGTH_LONG).show();
+                }
+                return;
+            }
+        }
     }
 
     //Helper function for displaying posts
@@ -220,7 +343,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                 .build();
 
         //Create Post adapter
-        postAdapter = new PostAdapter(options, postID, preferences, new OnItemClickListener() {
+        postAdapter = new PostAdapter(options, postID, preferences, time, distance, new OnItemClickListener() {
             @Override
             //Called when a post is clicked
             //Get post and post ID at that position and start activity to display post and comments
@@ -314,7 +437,16 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         postsRecyclerView.setLayoutManager(postsLayoutManager);
         DividerItemDecoration decoration = new DividerItemDecoration(postsRecyclerView.getContext(),
                 DividerItemDecoration.VERTICAL);
-        postsRecyclerView.addItemDecoration(decoration);
+        postsRecyclerView.addItemDecoration(new DividerItemDecoration(getContext(), postsLayoutManager.getOrientation()){
+            @Override
+            public void getItemOffsets(Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
+                if (view.getVisibility() == View.GONE) {
+                    outRect.setEmpty();
+                } else {
+                    super.getItemOffsets(outRect, view, parent, state);
+                }
+            }
+        });
 
         if (registration != null) {
             registration.remove();
@@ -504,8 +636,55 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == R.id.filter) {
-            Dialog dialog = new Dialog(getContext());
+            final Dialog dialog = new Dialog(getContext());
             dialog.setContentView(R.layout.filter_options);
+            SeekBar distanceBar = dialog.findViewById(R.id.distanceSeekBar);
+            SeekBar timeBar = dialog.findViewById(R.id.timeSeekBar);
+            distanceBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    distance = progress;
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+
+                }
+            });
+
+            timeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    time = progress;
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+
+                }
+            });
+            dialog.findViewById(R.id.closeButton).setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Log.d("Time", Integer.toString(time));
+                    Log.d("Distance", Integer.toString(distance));
+                    postList.clear();
+                    postID.clear();
+                    curTime = Timestamp.now();
+                    displayPosts();
+                    dialog.dismiss();
+                }
+            });
             dialog.show();
             return true;
         } else {
@@ -590,6 +769,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     @Override
     public void onRefresh() {
         //Refresh the adapter and remove the spinner when done
+        Log.d("Herd", "In onRefresh");
         postList.clear();
         postID.clear();
         curTime = Timestamp.now();

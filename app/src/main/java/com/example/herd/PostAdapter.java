@@ -1,6 +1,7 @@
 package com.example.herd;
 
 import android.content.SharedPreferences;
+import android.location.Location;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -14,6 +15,7 @@ import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.firebase.ui.firestore.paging.FirestorePagingAdapter;
 import com.firebase.ui.firestore.paging.FirestorePagingOptions;
 import com.google.firebase.Timestamp;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.ArrayList;
@@ -24,6 +26,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.paging.PagedList;
 import androidx.recyclerview.widget.RecyclerView;
 
 /*
@@ -144,18 +148,24 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
     private ArrayList<String> postID;
     private OnItemClickListener clickListener;
     private String userID;
+    private int time, distance;
+    private Float userLat, userLon;
     private HashMap<Integer, PostViewHolder> holderList;
     private SharedPreferences sharedPreferences;
 
     //Constructor for Firestore Paging Adapter
     public PostAdapter(@NonNull FirestorePagingOptions<Post> options, ArrayList<String> postID,
-                       SharedPreferences preferences, OnItemClickListener clickListener) {
+                       SharedPreferences preferences, int time, int distance, OnItemClickListener clickListener) {
         super(options);
 
         //Initialize class variables
         this.postID = postID;
         this.sharedPreferences = preferences;
         userID = sharedPreferences.getString("User ID", "");
+        this.time = time;
+        this.distance = distance;
+        this.userLat = sharedPreferences.getFloat("latitude", 0);
+        this.userLon = sharedPreferences.getFloat("longitude", 0);
         this.clickListener = clickListener;
         this.holderList = new HashMap<>();
     }
@@ -172,32 +182,50 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
     @Override
     protected void onBindViewHolder(final PostViewHolder holder, final int position, Post post) {
         Log.d("Herd", "In onBindViewHolder");
-        //Bind data to view holder
-        holder.postView.setText(post.getPost());
-        holder.score.setText(Integer.toString(post.getScore()));
-        holder.numComments.setText(Integer.toString(post.getNumComments()) + " comments");
-        holder.timeFromPost.setText(calcTimeAgo(post.getTime()));
-        Set<String> likes = new HashSet<String>(sharedPreferences.getStringSet("likes",
-                new HashSet<String>()));
-        Set<String> dislikes = new HashSet<String>(sharedPreferences.getStringSet("dislikes",
-                new HashSet<String>()));
-        //Log.d("Liked posts", likes.toString());
-        //Log.d("Dislikes posts", dislikes.toString());
 
-        if (likes != null && likes.contains(postID.get(position))) {
-            holder.upvote.setImageResource(R.drawable.upvote_selected);
+        int postDist = calcDistance(post.getLatitude(), post.getLongitude());
+        int postTime = calcTime(post.getTime());
+        if (postDist <= distance && postTime <= time) {
+            //Bind data to view holder
+            holder.postView.setText(post.getPost());
+            holder.score.setText(Integer.toString(post.getScore()));
+            holder.numComments.setText(Integer.toString(post.getNumComments()) + " comments");
+            holder.timeFromPost.setText(calcTimeAgo(post.getTime()));
+            holder.distance.setText(postDist + " miles");
+
+            Set<String> likes = new HashSet<String>(sharedPreferences.getStringSet("likes",
+                    new HashSet<String>()));
+            Set<String> dislikes = new HashSet<String>(sharedPreferences.getStringSet("dislikes",
+                    new HashSet<String>()));
+            //Log.d("Liked posts", likes.toString());
+            //Log.d("Dislikes posts", dislikes.toString());
+
+            if (likes != null && likes.contains(postID.get(position))) {
+                holder.upvote.setImageResource(R.drawable.upvote_selected);
+            } else {
+                holder.upvote.setImageResource(R.drawable.upvote);
+            }
+
+            if (dislikes != null && dislikes.contains(postID.get(position))) {
+                holder.downvote.setImageResource(R.drawable.downvote_selected);
+            } else {
+                holder.downvote.setImageResource(R.drawable.downvote);
+            }
+
+            if (!holderList.containsKey(position)) {
+                holderList.put(position, holder);
+            }
+            holder.itemView.setVisibility(View.VISIBLE);
+            holder.itemView.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
         } else {
-            holder.upvote.setImageResource(R.drawable.upvote);
-        }
-
-        if (dislikes != null && dislikes.contains(postID.get(position))) {
-            holder.downvote.setImageResource(R.drawable.downvote_selected);
-        } else {
-            holder.downvote.setImageResource(R.drawable.downvote);
-        }
-
-        if (!holderList.containsKey(position)) {
-            holderList.put(position, holder);
+            RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) holder.itemView.getLayoutParams();
+            if (position == 0)
+                params.height = 1;
+            else
+                params.height = 0;
+            params.width = LinearLayout.LayoutParams.MATCH_PARENT;
+            holder.itemView.setVisibility(View.GONE);
         }
     }
 
@@ -227,6 +255,28 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         }
     }
 
+    private int calcTime(Timestamp postTime) {
+        Date now = new Date();
+        Date postDate = postTime.toDate();
+        long diffInMillies = now.getTime() - postDate.getTime();
+        long weeks = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS)/7;
+        return (int) weeks;
+    }
+
+    private int calcDistance(Double latitude, Double longitude) {
+        Location postLoc = new Location("");
+        postLoc.setLatitude(latitude);
+        postLoc.setLongitude(longitude);
+
+        Location userLoc = new Location("");
+        userLoc.setLatitude(userLat);
+        userLoc.setLongitude(userLon);
+
+        float distanceInMeters = userLoc.distanceTo(postLoc);
+        int miles = (int) ((int) distanceInMeters*0.000621371192f);
+        return miles;
+    }
+
     @Override
     public void refresh() {
         super.refresh();
@@ -248,7 +298,7 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
 
     public class PostViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
         //UI element variables for post view
-        public TextView postView, score, numComments, timeFromPost;
+        public TextView postView, score, numComments, timeFromPost, distance;
         public ImageButton upvote, downvote;
         public LinearLayout post;
 
@@ -260,6 +310,7 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
             score = itemView.findViewById(R.id.score);
             numComments = itemView.findViewById(R.id.numComments);
             timeFromPost = itemView.findViewById(R.id.timeFromPost);
+            distance = itemView.findViewById(R.id.distance);
             upvote = itemView.findViewById(R.id.upvote);
             downvote = itemView.findViewById(R.id.downvote);
             post = itemView.findViewById(R.id.postView);
