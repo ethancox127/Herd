@@ -3,8 +3,10 @@ package com.example.herd.ui.home;
 import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.ActionBar;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -101,7 +103,6 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     private ExtendedFloatingActionButton newPostsButton;
     private SwipeRefreshLayout swipeContainer;
     private MaterialButton hotButton, newButton;
-    private PopupWindow popupWindow;
 
     //Firebase variables
     private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
@@ -147,8 +148,6 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
 
-        Log.d("Herd", "Home fragment onCreateView");
-
         //Inflate the fragment within
         final View root = inflater.inflate(R.layout.fragment_home, container, false);
 
@@ -165,11 +164,9 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         preferences = getContext().getSharedPreferences("MyPref", Context.MODE_PRIVATE);
         editor = preferences.edit();
 
-        //Get the userID and number of liked and disliked posts
+        //Get user info from SharedPreferences
         likes = preferences.getStringSet("likes", new HashSet<String>());
         dislikes = preferences.getStringSet("dislikes", new HashSet<String>());
-        Log.d("Likes posts", likes.toString());
-        Log.d("Disliked posts", dislikes.toString());
         userID = preferences.getString("User ID", "");
         prevLat = preferences.getFloat("latitude", 0);
         prevLon = preferences.getFloat("longitude", 0);
@@ -189,6 +186,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         newButton.setOnClickListener(this);
         swipeContainer.setOnRefreshListener(this);
 
+        //Initialize location handlers and request location updates
         setUpLocationHandlers();
         requestFineLocation();
 
@@ -198,31 +196,20 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         return root;
     }
 
-    //Initialized the locationListener and locationManager
+    //Initialize the locationListener and locationManager
     private void setUpLocationHandlers() {
+
         locationListener  = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                Log.d("Herd", "In onLocationChanged");
-                Log.d("New location", location.toString());
 
-                //Get the user's latitude and longitude and create the firestore Geopoint
+                //Get the user's new latitude and longitude
                 latitude = (float) location.getLatitude();
                 longitude = (float) location.getLongitude();
 
+                //If the user's location has changed, prompt if they want to reload posts
                 if (prevLat != latitude || prevLon != longitude) {
-
                     changeLocation();
-
-                    Log.d("Herd", "Location changed");
-
-                    //Add the latitude and longitude to the Shared Preferences
-                    editor.putFloat("latitude", latitude);
-                    editor.putFloat("longitude", longitude);
-                    editor.commit();
-
-                    prevLat = latitude;
-                    prevLon = longitude;
                 }
             }
 
@@ -239,13 +226,38 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
     }
 
+    //Helper function prompting user if they want to load posts around new location
     private void changeLocation() {
-        Dialog dialog = new Dialog(getContext());
+
+        //Create new AlertDialog Builder and set it's properties
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        builder.setMessage("Your location has changed.  Load posts for new location?")
+                .setCancelable(false)
+                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+
+                        //Add the latitude and longitude to the Shared Preferences
+                        editor.putFloat("latitude", latitude);
+                        editor.putFloat("longitude", longitude);
+                        editor.commit();
+
+                        //Update the previous latitude and longitude
+                        prevLat = latitude;
+                        prevLon = longitude;
+
+                        //Display the posts around the new location
+                        displayPosts();
+                    }
+                });
+
+        //Create and show the AlertDialog
+        AlertDialog alert = builder.create();
+        alert.show();
     }
 
     //Handler method for requesting the Access Fine Location permission
     private void requestFineLocation() {
-        System.out.println("In requestFineLocation");
+
         //Check if user has granted location permissions
         if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -257,7 +269,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
             //Request location updates so that the user's current location will not be null
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                    1000, 0, locationListener);
+                    1000, 16093.4f, locationListener);
         }
     }
 
@@ -265,15 +277,18 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     @TargetApi(Build.VERSION_CODES.M)
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+
         switch (requestCode) {
+
             case ACCESS_FINE_LOCATION: {
+
                 //Check that the fine location permission has been properly granted
                 if (grantResults.length > 0 && getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
                         == PackageManager.PERMISSION_GRANTED) {
 
                     //Request location updates so that the user's current location will not be null
                     locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                            60000, 0, locationListener);
+                            1000, 16093.4f, locationListener);
                 } else {
                     //Location permission has not been granted, notify user
                     Toast.makeText(getContext(), "Location not granted, won't query for posts near you",
@@ -339,18 +354,19 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
             //Get post and post ID at that position and start activity to display post and comments
             public void onRowClick(View view, int position) {
 
-                Log.d("Post id", postID.toString());
+                //Get the post id and associated holder
                 String id = postID.get(position);
                 PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
+                int score =  Integer.valueOf(holder.score.getText().toString());
+
+                //Get the like and dislike set from SharedPreferences
                 Set<String> likeSet = new HashSet<String>(preferences.getStringSet("likes",
                         new HashSet<String>()));
                 Set<String> dislikeSet = new HashSet<String>(preferences.getStringSet("dislikes",
                         new HashSet<String>()));
-                int score =  Integer.valueOf(holder.score.getText().toString());
-                Log.d("Herd", "position: " + position);
-                Log.d("score", Integer.toString(score));
 
                 switch (view.getId()) {
+
                     //Post selected
                     case R.id.postView:
                         Intent intent = new Intent(getContext(), PostCommentsActivity.class);
@@ -370,23 +386,30 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
                         } else {
 
+                            //Add the liked post to shared preferences
                             likeSet.add(id);
                             editor.putStringSet("likes", new HashSet<String>(likeSet));
                             editor.apply();
                             editor.commit();
+
+                            //Update post view holder
                             holder.upvote.setImageResource(R.drawable.upvote_selected);
                             score++;
                             holder.score.setText(Integer.toString(score));
 
+                            //If the post was already disliked by the user remove it from the dislike set
                             if (dislikeSet != null && dislikeSet.contains(id)) {
+
                                 dislikeSet.remove(id);
                                 editor.putStringSet("dislikes", new HashSet<String>(dislikeSet));
                                 editor.apply();
                                 editor.commit();
+
+                                //Update the view holder again
                                 holder.downvote.setImageResource(R.drawable.downvote);
                             }
 
-                            //Update user's liked posts
+                            //Update user's liked posts on Firestore
                             updateLikes(id);
                         }
                         break;
@@ -399,22 +422,30 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                                     Toast.LENGTH_SHORT).show();
                         } else {
 
+                            //Add the disliked post to shared preferences
                             dislikeSet.add(id);
                             editor.putStringSet("dislikes", new HashSet<String>(dislikeSet));
                             editor.apply();
                             editor.commit();
+
+                            //Update  the view holder
                             holder.downvote.setImageResource(R.drawable.downvote_selected);
                             score--;
                             holder.score.setText(Integer.toString(score));
 
+                            //Update the liked posts if needed
                             if (likeSet != null && likeSet.contains(id)) {
+
                                 likeSet.remove(id);
                                 editor.putStringSet("likes", new HashSet<String>(likeSet));
                                 editor.apply();
                                 editor.commit();
+
+                                //Update the view holder
                                 holder.upvote.setImageResource(R.drawable.upvote);
                             }
 
+                            //Update the user's dislikes posts on Firestore
                             updateDislikes(id);
                         }
                         break;
@@ -425,11 +456,10 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         //Set the adapter for the recycler view and add the decorations and layout manager
         postsRecyclerView.setAdapter(postAdapter);
         postsRecyclerView.setLayoutManager(postsLayoutManager);
-        DividerItemDecoration decoration = new DividerItemDecoration(postsRecyclerView.getContext(),
-                DividerItemDecoration.VERTICAL);
         postsRecyclerView.addItemDecoration(new DividerItemDecoration(getContext(), postsLayoutManager.getOrientation()){
             @Override
             public void getItemOffsets(Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
+                //If post was filtered out in Adapter, don't display decoration item
                 if (view.getVisibility() == View.GONE) {
                     outRect.setEmpty();
                 } else {
@@ -438,18 +468,25 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
             }
         });
 
+        //Remove listener if one exists
         if (registration != null) {
             registration.remove();
         }
+
+        //If new posts are displayed create new listener
         if (type == "new") {
             listenForNewPosts();
         }
     }
 
+    //Helper function listening for new/modified firestore posts
     private void listenForNewPosts() {
+
+        //Query for all posts ordered by time
         newPosts = firestore.collection("posts")
                 .orderBy("time", Query.Direction.DESCENDING);
 
+        //Created Snapshot Listener for query
         registration = newPosts.addSnapshotListener(
                 new EventListener<QuerySnapshot>() {
                     @Override
@@ -460,14 +497,23 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                         }
 
                         if (queryDocumentSnapshots != null)  {
+
+                            //Get document change for each document in query snapshot
                             for (DocumentChange dc : queryDocumentSnapshots.getDocumentChanges())  {
+
                                 Post post = dc.getDocument().toObject(Post.class);
+
                                 switch (dc.getType()) {
+
                                     case ADDED:
+
+                                        //Add new post to new post lists
                                         if (!postID.contains(dc.getDocument().getId())) {
                                             newPostList.add(post);
                                             newPostID.add(dc.getDocument().getId());
                                         }
+
+                                        //Add New Posts button if this is first new post
                                         if (post.getTime().toDate().after(curTime.toDate())) {
                                             if (numNewPosts == 0 && post.getUserID() != userID) {
                                                 addButton();
@@ -475,27 +521,41 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                                             numNewPosts++;
                                         }
                                         break;
+
                                     case MODIFIED:
-                                        Log.d("Herd", "post has been modified");
+
                                         int position = postID.indexOf(dc.getDocument().getId());
                                         int newPos = newPostID.indexOf(dc.getDocument().getId());
+
+                                        //If the post has a holder created for it, update the holder
                                         if (position != -1) {
+
                                             PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
+
+                                            //Update the score if necessary
                                             if (dc.getDocument().getLong("score") !=
                                                     Long.parseLong(holder.score.getText().toString())) {
+
                                                 holder.score.setText(dc.getDocument().getLong("score").toString());
+
                                             }
-                                            Log.d("Before split", holder.numComments.getText().toString());
+
+                                            //Update the number of comments if necessary
                                             String curNumComments = holder.numComments.getText().toString()
                                                     .split(" ")[0];
-                                            Log.d("After split", curNumComments);
                                             if (dc.getDocument().getLong("numComments") !=
                                                     Long.parseLong(curNumComments)) {
+
                                                 holder.numComments.setText(dc.getDocument().getLong("numComments")
                                                         .toString() + " comments");
+
                                             }
+
                                         } else if (newPos != -1) {
+
+                                            //If holder hasn't been created for post, update it in new post list
                                             newPostList.set(newPos, dc.getDocument().toObject(Post.class));
+
                                         }
                                         break;
                                 }
@@ -509,6 +569,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
     //Helper function managing the query for the adapter
     private Query updateQuery() {
+
         if (type == "hot") {
             return firestore.collection("posts")
                     .orderBy("score", Query.Direction.DESCENDING);
@@ -517,6 +578,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
                     .whereLessThan("time", curTime)
                     .orderBy("time", Query.Direction.DESCENDING);
         }
+
     }
 
     //Update the score for the appropriate post by value (1 or -1)
