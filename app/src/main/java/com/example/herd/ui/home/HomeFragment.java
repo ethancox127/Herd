@@ -203,7 +203,27 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         locationListener  = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
+                Log.d("Herd", "In onLocationChanged");
+                Log.d("New location", location.toString());
 
+                //Get the user's latitude and longitude and create the firestore Geopoint
+                latitude = (float) location.getLatitude();
+                longitude = (float) location.getLongitude();
+
+                if (prevLat != latitude || prevLon != longitude) {
+
+                    changeLocation();
+
+                    Log.d("Herd", "Location changed");
+
+                    //Add the latitude and longitude to the Shared Preferences
+                    editor.putFloat("latitude", latitude);
+                    editor.putFloat("longitude", longitude);
+                    editor.commit();
+
+                    prevLat = latitude;
+                    prevLon = longitude;
+                }
             }
 
             @Override
@@ -217,6 +237,10 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         };
 
         locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
+    }
+
+    private void changeLocation() {
+        Dialog dialog = new Dialog(getContext());
     }
 
     //Handler method for requesting the Access Fine Location permission
@@ -234,23 +258,6 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
             //Request location updates so that the user's current location will not be null
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
                     1000, 0, locationListener);
-
-            //Get the user's location
-            location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-
-            //Get the user's latitude and longitude and create the firestore Geopoint
-            latitude = (float) location.getLatitude();
-            longitude = (float) location.getLongitude();
-
-            if (prevLat != latitude || prevLon != longitude) {
-                Log.d("longitude", Double.toString(location.getLongitude()));
-                Log.d("latitude", Double.toString(location.getLatitude()));
-
-                //Add the latitude and longitude to the Shared Preferences
-                editor.putFloat("latitude", latitude);
-                editor.putFloat("longitude", longitude);
-                editor.commit();
-            }
         }
     }
 
@@ -266,24 +273,7 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
 
                     //Request location updates so that the user's current location will not be null
                     locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                            1000, 0, locationListener);
-
-                    //Get the user's location
-                    location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-
-                    //Get the user's latitude and longitude and create the firestore Geopoint
-                    latitude = (float) location.getLatitude();
-                    longitude = (float) location.getLongitude();
-
-                    if (prevLat != latitude || prevLon != longitude) {
-                        Log.d("longitude", Double.toString(location.getLongitude()));
-                        Log.d("latitude", Double.toString(location.getLatitude()));
-
-                        //Add the latitude and longitude to the Shared Preferences
-                        editor.putFloat("latitude", latitude);
-                        editor.putFloat("longitude", longitude);
-                        editor.commit();
-                    }
+                            60000, 0, locationListener);
                 } else {
                     //Location permission has not been granted, notify user
                     Toast.makeText(getContext(), "Location not granted, won't query for posts near you",
