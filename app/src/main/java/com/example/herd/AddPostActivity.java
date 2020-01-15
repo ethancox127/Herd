@@ -86,6 +86,7 @@ public class AddPostActivity extends AppCompatActivity {
                                             public void onComplete(@NonNull Task<Void> task) {
                                                 if (task.isSuccessful()) {
                                                     Log.d("Herd", "Num comments updated");
+                                                    finish();
                                                 } else {
                                                     task.getException().printStackTrace();
                                                 }
@@ -97,7 +98,6 @@ public class AddPostActivity extends AppCompatActivity {
                         }
                     });
         }
-        //finish();
     }
 }
 

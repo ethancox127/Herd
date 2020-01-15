@@ -8,13 +8,16 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.firebase.ui.firestore.SnapshotParser;
@@ -35,6 +38,8 @@ import com.google.firebase.firestore.QuerySnapshot;
 import com.google.firebase.firestore.local.QueryData;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 
 import javax.annotation.Nullable;
 
@@ -50,9 +55,16 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
     private ArrayList<String> commentID = new ArrayList<>();
 
     //Other variables
-    private PostAdapter commentAdapter;
+    private CommentsAdapter commentAdapter;
     private String docID;
     private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
+
+    //Shared Preferences and editor
+    private SharedPreferences sharedPreferences;
+    private SharedPreferences.Editor editor;
+
+    private Set<String> postLikes, postDislikes, commentLikes, commentDislikes;
+    private String userID;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,83 +82,399 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
         swipeRefreshLayout.setOnRefreshListener(this);
         floatingActionButton.setOnClickListener(this);
 
+        //Initialize Shared Preferences and editor
+        sharedPreferences = getApplicationContext().getSharedPreferences("MyPref", Context.MODE_PRIVATE);
+        editor = sharedPreferences.edit();
+
+        postLikes = sharedPreferences.getStringSet("likes", new HashSet<String>());
+        postDislikes = sharedPreferences.getStringSet("dislikes", new HashSet<String>());
+        commentLikes = sharedPreferences.getStringSet("Comment Likes", new HashSet<String>());
+        commentDislikes = sharedPreferences.getStringSet("Comment Dislikes", new HashSet<String>());
+        userID = sharedPreferences.getString("User ID", "");
+
         //Get the post and post ID from the intent that started this activity
         Intent intent = getIntent();
         docID = intent.getStringExtra("Post ID");
         Post post = (Post) intent.getParcelableExtra("Post");
 
-        //Add the post and postID to
-        //commentList.add(post);
-        //commentID.add(docID);
+        //Add the post and postID to the comment lists
+        commentList.add(post);
+        commentID.add(docID);
 
-        Log.d("Herd", post.toString());
-        Log.d("Herd", docID);
+        Log.d("Post", post.toString());
+        Log.d("Post ID", docID);
 
-        getComments();
+        displayComments();
     }
 
-    private void getComments() {
+    private void displayComments() {
+
+        getComments(new CallbackInterface<QuerySnapshot>() {
+            @Override
+            public void onStart() { }
+
+            @Override
+            public void onSuccess(QuerySnapshot object) {
+                for (DocumentSnapshot snapshot : object) {
+                    commentList.add(snapshot.toObject(Post.class));
+                    commentID.add(snapshot.getId());
+                }
+
+                commentAdapter = new CommentsAdapter(commentList, sharedPreferences, new OnItemClickListener() {
+                    @Override
+                    public void onRowClick(View view, int position) {
+
+                        //Get the post id and associated holder
+                        String id = commentID.get(position);
+                        CommentsAdapter.PostViewHolder holder = commentAdapter.getViewByPosition(position);
+                        int score =  Integer.valueOf(holder.score.getText().toString());
+                        Set<String> likeSet, dislikeSet;
+
+                        //Post was selected
+                        if (position == 0) {
+
+                            //Get the like and dislike sets for posts
+                            likeSet = new HashSet<String>(sharedPreferences.getStringSet("Comment Likes",
+                                    new HashSet<String>()));
+                            dislikeSet = new HashSet<String>(sharedPreferences.getStringSet("Comment Dislikes",
+                                    new HashSet<String>()));
+
+                        } else {
+
+                            //Get the like and dislike sets for comments
+                            likeSet = new HashSet<String>(sharedPreferences.getStringSet("likes",
+                                    new HashSet<String>()));
+                            dislikeSet = new HashSet<String>(sharedPreferences.getStringSet("dislikes",
+                                    new HashSet<String>()));
+
+                        }
+
+                        switch (view.getId()) {
+
+                            case R.id.upvote:
+                                //If upvote button is already selected notify user
+                                if (likeSet != null && likeSet.contains(id)) {
+
+                                    Toast.makeText(getApplicationContext(), "You already liked that post",
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else {
+                                    //Add the liked post to shared preferences
+                                    likeSet.add(id);
+                                    holder.upvote.setImageResource(R.drawable.upvote_selected);
+                                    score++;
+                                    holder.score.setText(Integer.toString(score));
+
+                                    if (position == 0) {
+                                        editor.putStringSet("likes", likeSet);
+                                        editor.apply();
+                                        editor.commit();
+                                        updateLikes(id);
+
+                                        if (dislikeSet != null && dislikeSet.contains(id)) {
+                                            dislikeSet.remove(id);
+                                            editor.putStringSet("dislikes", dislikeSet);
+                                            editor.apply();
+                                            editor.commit();
+
+                                            holder.downvote.setImageResource(R.drawable.downvote);
+
+                                            removeDislike(id);
+                                        }
+
+
+                                    } else {
+                                        editor.putStringSet("Comment Likes", likeSet);
+                                        editor.apply();
+                                        editor.commit();
+                                        updateCommentLikes(id);
+
+                                        if (dislikeSet != null && dislikeSet.contains(id)) {
+                                            dislikeSet.remove(id);
+                                            editor.putStringSet("Comment Dislikes", dislikeSet);
+                                            editor.apply();
+                                            editor.commit();
+
+                                            holder.downvote.setImageResource(R.drawable.downvote);
+                                            removeCommentDislike(id);
+                                        }
+                                    }
+                                }
+                                break;
+
+                            case R.id.downvote:
+                                //If downvote button is already selected notify user
+                                if (dislikeSet != null && dislikeSet.contains(id)) {
+
+                                    Toast.makeText(getApplicationContext(), "You already disliked that post",
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else {
+
+                                    //Add the disliked post to shared preferences
+                                    dislikeSet.add(id);
+                                    holder.downvote.setImageResource(R.drawable.downvote_selected);
+                                    score--;
+                                    holder.score.setText(Integer.toString(score));
+
+                                    if (position == 0) {
+                                        editor.putStringSet("dislikes", dislikeSet);
+                                        editor.apply();
+                                        editor.commit();
+                                        updateDislikes(id);
+
+                                        if (likeSet != null && likeSet.contains(id)) {
+                                            likeSet.remove(id);
+                                            editor.putStringSet("likes", likeSet);
+                                            editor.apply();
+                                            editor.commit();
+
+                                            holder.upvote.setImageResource(R.drawable.upvote);
+
+                                            removeLike(id);
+                                        }
+
+
+                                    } else {
+
+                                        editor.putStringSet("Comment Dislikes", dislikeSet);
+                                        editor.apply();
+                                        editor.commit();
+                                        updateCommentDislikes(id);
+
+                                        if (likeSet != null && likeSet.contains(id)) {
+                                            likeSet.remove(id);
+                                            editor.putStringSet("Comment Likes", likeSet);
+                                            editor.apply();
+                                            editor.commit();
+
+                                            holder.upvote.setImageResource(R.drawable.downvote);
+                                            removeCommentLike(id);
+                                        }
+                                    }
+                                }
+                                break;
+
+                        }
+
+                    }
+                });
+
+                commentsRecyclerView.setAdapter(commentAdapter);
+                commentsRecyclerView.setLayoutManager(new LinearLayoutManager(getApplicationContext()));
+                DividerItemDecoration decoration = new DividerItemDecoration(commentsRecyclerView.getContext(),
+                        DividerItemDecoration.VERTICAL);
+                commentsRecyclerView.addItemDecoration(decoration);
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private void getComments(final CallbackInterface<QuerySnapshot> callback) {
         //Query for the top comments on this post
         Query query = firestore.collection("posts")
                 .document(docID).collection("comments")
                 .orderBy("score", Query.Direction.DESCENDING);
 
+        callback.onStart();
         query.get().addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
             @Override
             public void onComplete(@NonNull Task<QuerySnapshot> task) {
                 if (task.isSuccessful()) {
-                    for (Post post : task.getResult().toObjects(Post.class)) {
-                        Log.d("Comment", post.toString());
-                    }
+                    callback.onSuccess(task.getResult());
                 } else {
-                    task.getException().printStackTrace();
+                    callback.onFailure(task.getException());
                 }
             }
         });
 
-        //Create paged list configurations
-        PagedList.Config config = new PagedList.Config.Builder()
-                .setEnablePlaceholders(false)
-                .setPrefetchDistance(10)
-                .setPageSize(10)
-                .build();
+        Log.d("Comments List", commentList.toString());
+    }
 
-        //Create Firestore Paging Options and parse posts in postsList and PostID's for other use
-        FirestorePagingOptions<Post> options = new FirestorePagingOptions.Builder<Post>()
-                .setLifecycleOwner(this)
-                .setQuery(query, config, new SnapshotParser<Post>() {
-                    @NonNull
+    //Update the score for the appropriate post by value (1 or -1)
+    private void updatePostScore(String postID, int value) {
+        firestore.collection("posts").document(postID)
+                .update("score", FieldValue.increment(value))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
                     @Override
-                    public Post parseSnapshot(@NonNull DocumentSnapshot snapshot) {
-                        Post post = snapshot.toObject(Post.class);
-                        commentList.add(post);
-                        commentID.add(snapshot.getId());
-                        return post;
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Post score update successful");
+                        } else {
+                            Log.d("Herd", "Post score update failed");
+                            task.getException().printStackTrace();
+                        }
                     }
-                })
-                .build();
+                });
+    }
 
-        commentAdapter = new PostAdapter(options, commentID);
+    private void updateCommentScore(String commentID, int value) {
+        firestore.collection("posts").document(docID)
+                .collection("comments").document(commentID)
+                .update("score", FieldValue.increment(value))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Comment score update successful");
+                        } else {
+                            Log.d("Herd", "Comment score update failed");
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
 
-        commentsRecyclerView.setAdapter(commentAdapter);
-        commentsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        DividerItemDecoration decoration = new DividerItemDecoration(commentsRecyclerView.getContext(),
-                DividerItemDecoration.VERTICAL);
-        commentsRecyclerView.addItemDecoration(decoration);
+    private void updateLikes(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("likes", FieldValue.arrayUnion(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Updated user's liked posts");
+                            updatePostScore(id, 1);
+                        } else {
+                            Log.d("Herd", "Unable to update user's liked posts");
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void removeLike(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("likes", FieldValue.arrayRemove(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Updated user's liked posts");
+                        } else {
+                            Log.d("Herd", "Unable to update user's liked posts");
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void updateDislikes(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("dislikes", FieldValue.arrayUnion(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Dislike added");
+                            updatePostScore(id, -1);
+                        } else {
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void removeDislike(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("dislikes", FieldValue.arrayRemove(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Dislike removed");
+                        } else {
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void updateCommentLikes(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("Comment Likes", FieldValue.arrayUnion(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Updated user's liked posts");
+                            updateCommentScore(id, 1);
+                        } else {
+                            Log.d("Herd", "Unable to update user's liked posts");
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void removeCommentLike(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("Comment Likes", FieldValue.arrayRemove(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Comment like removed");
+                        } else {
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void updateCommentDislikes(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("Comment Disikes", FieldValue.arrayUnion(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Updated user's disliked posts");
+                            updateCommentScore(id, -11);
+                        } else {
+                            Log.d("Herd", "Unable to update user's disliked posts");
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    private void removeCommentDislike(final String id) {
+        firestore.collection("users")
+                .document(userID)
+                .update("Comment Dislikes", FieldValue.arrayRemove(id))
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            Log.d("Herd", "Comment dislike removed");
+                        } else {
+                            task.getException().printStackTrace();
+                        }
+                    }
+                });
     }
 
     @Override
     protected void onStart() {
         Log.d("PostComments", "In on start");
         super.onStart();
-        commentAdapter.startListening();
     }
 
     @Override
     protected void onStop() {
         Log.d("PostComments", "In on stop");
         super.onStop();
-        commentAdapter.stopListening();
     }
 
     @Override
