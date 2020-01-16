@@ -57,6 +57,7 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
     //Other variables
     private CommentsAdapter commentAdapter;
     private String docID;
+    private Post post;
     private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
 
     //Shared Preferences and editor
@@ -95,7 +96,7 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
         //Get the post and post ID from the intent that started this activity
         Intent intent = getIntent();
         docID = intent.getStringExtra("Post ID");
-        Post post = (Post) intent.getParcelableExtra("Post");
+        post = (Post) intent.getParcelableExtra("Post");
 
         //Add the post and postID to the comment lists
         commentList.add(post);
@@ -120,7 +121,7 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                     commentID.add(snapshot.getId());
                 }
 
-                commentAdapter = new CommentsAdapter(commentList, sharedPreferences, new OnItemClickListener() {
+                commentAdapter = new CommentsAdapter(commentList, commentID, sharedPreferences, new OnItemClickListener() {
                     @Override
                     public void onRowClick(View view, int position) {
 
@@ -134,19 +135,18 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                         if (position == 0) {
 
                             //Get the like and dislike sets for posts
-                            likeSet = new HashSet<String>(sharedPreferences.getStringSet("Comment Likes",
-                                    new HashSet<String>()));
-                            dislikeSet = new HashSet<String>(sharedPreferences.getStringSet("Comment Dislikes",
-                                    new HashSet<String>()));
-
-                        } else {
-
-                            //Get the like and dislike sets for comments
                             likeSet = new HashSet<String>(sharedPreferences.getStringSet("likes",
                                     new HashSet<String>()));
                             dislikeSet = new HashSet<String>(sharedPreferences.getStringSet("dislikes",
                                     new HashSet<String>()));
 
+                        } else {
+
+                            //Get the like and dislike sets for comments
+                            likeSet = new HashSet<String>(sharedPreferences.getStringSet("Comment Likes",
+                                    new HashSet<String>()));
+                            dislikeSet = new HashSet<String>(sharedPreferences.getStringSet("Comment Dislikes",
+                                    new HashSet<String>()));
                         }
 
                         switch (view.getId()) {
@@ -169,7 +169,6 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                                         editor.putStringSet("likes", likeSet);
                                         editor.apply();
                                         editor.commit();
-                                        updateLikes(id);
 
                                         if (dislikeSet != null && dislikeSet.contains(id)) {
                                             dislikeSet.remove(id);
@@ -178,16 +177,13 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                                             editor.commit();
 
                                             holder.downvote.setImageResource(R.drawable.downvote);
-
-                                            removeDislike(id);
                                         }
 
-
+                                        updateLikes(id);
                                     } else {
                                         editor.putStringSet("Comment Likes", likeSet);
                                         editor.apply();
                                         editor.commit();
-                                        updateCommentLikes(id);
 
                                         if (dislikeSet != null && dislikeSet.contains(id)) {
                                             dislikeSet.remove(id);
@@ -196,8 +192,9 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                                             editor.commit();
 
                                             holder.downvote.setImageResource(R.drawable.downvote);
-                                            removeCommentDislike(id);
                                         }
+
+                                        updateCommentLikes(id);
                                     }
                                 }
                                 break;
@@ -221,7 +218,6 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                                         editor.putStringSet("dislikes", dislikeSet);
                                         editor.apply();
                                         editor.commit();
-                                        updateDislikes(id);
 
                                         if (likeSet != null && likeSet.contains(id)) {
                                             likeSet.remove(id);
@@ -230,17 +226,14 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                                             editor.commit();
 
                                             holder.upvote.setImageResource(R.drawable.upvote);
-
-                                            removeLike(id);
                                         }
 
-
+                                        updateDislikes(id);
                                     } else {
 
                                         editor.putStringSet("Comment Dislikes", dislikeSet);
                                         editor.apply();
                                         editor.commit();
-                                        updateCommentDislikes(id);
 
                                         if (likeSet != null && likeSet.contains(id)) {
                                             likeSet.remove(id);
@@ -248,9 +241,10 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                                             editor.apply();
                                             editor.commit();
 
-                                            holder.upvote.setImageResource(R.drawable.downvote);
-                                            removeCommentLike(id);
+                                            holder.upvote.setImageResource(R.drawable.upvote);
                                         }
+
+                                        updateCommentDislikes(id);
                                     }
                                 }
                                 break;
@@ -338,6 +332,9 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                     public void onComplete(@NonNull Task<Void> task) {
                         if (task.isSuccessful()) {
                             Log.d("Herd", "Updated user's liked posts");
+                            if (postDislikes != null && postDislikes.contains(id)) {
+                                removeDislike(id);
+                            }
                             updatePostScore(id, 1);
                         } else {
                             Log.d("Herd", "Unable to update user's liked posts");
@@ -373,6 +370,9 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                     public void onComplete(@NonNull Task<Void> task) {
                         if (task.isSuccessful()) {
                             Log.d("Herd", "Dislike added");
+                            if (postLikes != null && postLikes.contains(id)) {
+                                removeLike(id);
+                            }
                             updatePostScore(id, -1);
                         } else {
                             task.getException().printStackTrace();
@@ -406,6 +406,9 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                     public void onComplete(@NonNull Task<Void> task) {
                         if (task.isSuccessful()) {
                             Log.d("Herd", "Updated user's liked posts");
+                            if (commentDislikes != null && commentDislikes.contains(id)) {
+                                removeCommentDislike(id);
+                            }
                             updateCommentScore(id, 1);
                         } else {
                             Log.d("Herd", "Unable to update user's liked posts");
@@ -440,7 +443,10 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
                     public void onComplete(@NonNull Task<Void> task) {
                         if (task.isSuccessful()) {
                             Log.d("Herd", "Updated user's disliked posts");
-                            updateCommentScore(id, -11);
+                            if (commentDislikes != null && commentDislikes.contains(id)) {
+                                removeCommentLike(id);
+                            }
+                            updateCommentScore(id, -1);
                         } else {
                             Log.d("Herd", "Unable to update user's disliked posts");
                             task.getException().printStackTrace();
@@ -487,6 +493,11 @@ public class PostCommentsActivity extends AppCompatActivity implements View.OnCl
     @Override
     public void onRefresh() {
         //Refresh the adapter and remove the spinner when done
+        commentList.clear();
+        commentID.clear();
+        commentList.add(post);
+        commentID.add(docID);
+        displayComments();
         swipeRefreshLayout.setRefreshing(false);
     }
 }

@@ -190,9 +190,6 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
         setUpLocationHandlers();
         requestFineLocation();
 
-        //Load existing posts and listen for new posts
-        displayPosts();
-
         return root;
     }
 
@@ -798,14 +795,14 @@ public class HomeFragment extends Fragment implements View.OnClickListener, Swip
     public void onStart() {
         Log.d("Home fragment", "In on start");
         super.onStart();
+
+        postList.clear();
+        postID.clear();
+        curTime = Timestamp.now();
+        displayPosts();
+
         //Activity starting, listen for new posts
         postAdapter.startListening();
-        if (numNewPosts > 0) {
-            postList.clear();
-            postID.clear();
-            curTime = Timestamp.now();
-            postAdapter.refresh();
-        }
     }
 
     @Override

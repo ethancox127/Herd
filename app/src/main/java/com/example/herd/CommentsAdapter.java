@@ -12,6 +12,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.RecyclerView.ViewHolder;
 
 import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -29,14 +30,16 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
 
     //Local variables
     private ArrayList<Post> commentList;
+    private ArrayList<String> commentID;
     private OnItemClickListener clickListener;
     private Float userLat, userLon;
     private HashMap<Integer, CommentsAdapter.PostViewHolder> holderList;
     private SharedPreferences sharedPreferences;
 
-    public CommentsAdapter(ArrayList<Post> commentList, SharedPreferences preferences,
-                           OnItemClickListener clickListener) {
+    public CommentsAdapter(ArrayList<Post> commentList, ArrayList<String> commentID,
+                           SharedPreferences preferences, OnItemClickListener clickListener) {
         this.commentList = commentList;
+        this.commentID = commentID;
         this.clickListener = clickListener;
         this.holderList = new HashMap<>();
         this.sharedPreferences = preferences;
@@ -55,6 +58,32 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
         holder.numComments.setText(Integer.toString(post.getNumComments()) + " comments");
         holder.timeFromPost.setText(calcTimeAgo(post.getTime()));
         holder.distance.setText(calcDistance(post.getLatitude(), post.getLongitude()) + " miles");
+
+        Set<String> likes, dislikes;
+
+        if (position == 0) {
+            likes = sharedPreferences.getStringSet("likes", new HashSet<String>());
+            dislikes = sharedPreferences.getStringSet("dislikes", new HashSet<String>());
+        } else {
+            likes = sharedPreferences.getStringSet("Comment Likes", new HashSet<String>());
+            dislikes = sharedPreferences.getStringSet("Comment Dislikes", new HashSet<String>());
+        }
+
+        if (likes != null && likes.contains(commentID.get(position))) {
+            holder.upvote.setImageResource(R.drawable.upvote_selected);
+        } else {
+            holder.upvote.setImageResource(R.drawable.upvote);
+        }
+
+        if (dislikes != null && dislikes.contains(commentID.get(position))) {
+            holder.downvote.setImageResource(R.drawable.downvote_selected);
+        } else {
+            holder.downvote.setImageResource(R.drawable.downvote);
+        }
+
+        if (position == 0) {
+            holder.postView.setTextSize(36);
+        }
 
         if (!holderList.containsKey(position)) {
             holderList.put(position, holder);
@@ -112,8 +141,6 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
     public PostViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         Context context = parent.getContext();
         LayoutInflater inflater = LayoutInflater.from(context);
-
-        //Inflate the custom post view layout
         View postView = inflater.inflate(R.layout.post_view, parent, false);
 
         //Return a new holder for the custom post view
@@ -121,7 +148,7 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
         return postViewHolder;
     }
 
-    public class PostViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
+    public class PostViewHolder extends ViewHolder implements View.OnClickListener {
         public TextView postView, score, numComments, timeFromPost, distance;
         public ImageButton upvote, downvote;
         public LinearLayout post;
@@ -147,5 +174,4 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
             clickListener.onRowClick(view, getAdapterPosition());
         }
     }
-
 }
