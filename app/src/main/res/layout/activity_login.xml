@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/herdmoji_background"
-    tools:context=".MainActivity" >
+    tools:context=".LoginActivity" >
 
     <ImageView
         android:id="@+id/herdDialogView"
@@ -24,7 +24,7 @@
         app:srcCompat="@drawable/herd_dialog" />
 
     <ImageButton
-        android:id="@+id/imageButton"
+        android:id="@+id/signInButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="185dp"
@@ -32,7 +32,6 @@
         android:layout_marginStart="80dp"
         android:layout_marginTop="270dp"
         android:contentDescription="@string/follow_the_herd_button"
-        android:onClick="getStarted"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
