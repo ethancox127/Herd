@@ -11,30 +11,44 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
-public class AuthRepository extends LiveData<Boolean> {
+public class AuthRepository {
 
     private final String TAG = "AuthRepository";
     private FirebaseAuth mAuth;
 
     public AuthRepository() {
+
         mAuth = FirebaseAuth.getInstance();
+
     }
 
-    public void signInAnonymously() {
+    public LiveData<Boolean> signInAnonymously() {
+        final MutableLiveData<Boolean> result = new MutableLiveData();
         mAuth.signInAnonymously()
                 .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
                     @Override
                     public void onComplete(@NonNull Task<AuthResult> task) {
                         if (task.isSuccessful()) {
                             Log.d(TAG, "Anonymous login successful");
-                            setValue(true);
+                            result.setValue(true);
                         } else {
                             Log.e(TAG, "Unable to add anonymous user");
                             task.getException().printStackTrace();
-                            setValue(false);
+                            result.setValue(false);
                         }
                     }
                 });
+        return result;
+    }
+
+    public LiveData<Boolean> checkSignedIn() {
+        final MutableLiveData result = new MutableLiveData();
+        if (mAuth.getCurrentUser() != null) {
+            result.setValue(true);
+        } else {
+            result.setValue(false);
+        }
+        return result;
     }
 
 }

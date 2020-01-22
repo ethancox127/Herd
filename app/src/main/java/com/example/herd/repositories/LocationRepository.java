@@ -20,6 +20,7 @@ public class LocationRepository extends LiveData<Location> {
     private FusedLocationProviderClient locationClient;
     private LocationCallback locationCallback;
     private LocationRequest locationRequest;
+    private Location lastKnown;
 
     public LocationRepository(Context context) {
         locationClient = LocationServices.getFusedLocationProviderClient(context);
@@ -30,9 +31,18 @@ public class LocationRepository extends LiveData<Location> {
         locationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult locationResult) {
+
                 for (Location location : locationResult.getLocations()) {
-                    setValue(location);
+                    Log.d(TAG, "Location " + location.toString());
+                    Log.d(TAG, "Last location: " + location.toString());
+                    if (location.getLatitude() != lastKnown.getLatitude() ||
+                            location.getLongitude() != lastKnown.getLongitude()) {
+                        Log.d(TAG, "onLocationResult");
+                        lastKnown = location;
+                        setValue(location);
+                    }
                 }
+
             }
         };
     }
@@ -45,6 +55,8 @@ public class LocationRepository extends LiveData<Location> {
                 .addOnSuccessListener(new OnSuccessListener<Location>() {
                     @Override
                     public void onSuccess(Location location) {
+                        Log.d(TAG, "onSuccess");
+                        lastKnown = location;
                         setValue(location);
                     }
                 });
@@ -59,6 +71,6 @@ public class LocationRepository extends LiveData<Location> {
     }
 
     private void startLocationUpdates() {
-        locationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+        locationClient.requestLocationUpdates(locationRequest, locationCallback, null);
     }
 }

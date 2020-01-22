@@ -14,13 +14,13 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
 public class LoginViewModel extends AndroidViewModel {
 
     //Firebase variables
     private FirebaseAuth mAuth = FirebaseAuth.getInstance();
-    private FirebaseUser firebaseUser;
     public FirebaseFirestore firestore = FirebaseFirestore.getInstance();
 
     //Repositories
@@ -30,23 +30,32 @@ public class LoginViewModel extends AndroidViewModel {
 
     public LoginViewModel(@NonNull Application application) {
         super(application);
+
+        //Initialize the repositories
         authRepository = new AuthRepository();
         locationRepository = new LocationRepository(application);
         userRepository = new UserRepository();
     }
 
+    //Sign in user and return true or false based on a successful authentication
     public LiveData<Boolean> signIn() {
-        authRepository.signInAnonymously();
-        return authRepository;
+        return authRepository.signInAnonymously();
     }
 
+
+    //Check if user is signed in
+    public LiveData<Boolean> checkSignedIn() {
+        return authRepository.checkSignedIn();
+    }
+
+    //Return the locationRepository so the user can get location updates
     public LiveData<Location> getLocation() {
         return locationRepository;
     }
 
+    //Add the user to the firestore and return whether it was successful
     public LiveData<Boolean> addUser(double latitude, double longitude) {
-        firebaseUser = mAuth.getCurrentUser();
-        User user = new User(firebaseUser.getUid(), latitude, longitude);
+        User user = new User(mAuth.getCurrentUser().getUid(), latitude, longitude);
         return userRepository.addUser(user);
     }
 }

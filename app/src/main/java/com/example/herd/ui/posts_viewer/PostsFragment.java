@@ -119,7 +119,7 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
                              ViewGroup container, Bundle savedInstanceState) {
 
         //Inflate the fragment within
-        final View root = inflater.inflate(R.layout.fragment_home, container, false);
+        final View root = inflater.inflate(R.layout.fragment_posts, container, false);
 
         //Initialize the UI elements
         postsRecyclerView = root.findViewById(R.id.recyclerView);
