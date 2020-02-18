@@ -1,5 +1,6 @@
 package com.example.herd.adapters;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.location.Location;
 import android.util.Log;
@@ -13,13 +14,17 @@ import android.widget.TextView;
 import com.example.herd.R;
 import com.example.herd.interfaces.OnItemClickListener;
 import com.example.herd.models.Post;
+import com.example.herd.ui.comments_viewer.CommentsViewModel;
+import com.example.herd.ui.posts_viewer.PostsViewModel;
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.firebase.ui.firestore.paging.FirestorePagingAdapter;
 import com.firebase.ui.firestore.paging.FirestorePagingOptions;
 import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreException;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -30,22 +35,32 @@ import java.util.concurrent.TimeUnit;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.lifecycle.ViewModel;
+import androidx.lifecycle.ViewModelProviders;
 import androidx.paging.PagedList;
 import androidx.recyclerview.widget.RecyclerView;
 
-/*
+
 public class PostAdapter extends RecyclerView.Adapter<PostAdapter.PostViewHolder> {
+
+    private final String TAG = "PostAdapter";
 
     //Local variables
     private ArrayList<Post> postList;
-    private ArrayList<String> postID;
     private OnItemClickListener clickListener;
-    private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
+    private PostsViewModel viewModel;
+    private ArrayList<String> likes, dislikes, postID;
+    private double userLat, userLon;
 
-    public PostAdapter(ArrayList<Post> postList, ArrayList<String> postID, OnItemClickListener clickListener) {
-        this.postList = postList;
-        this.postID = postID;
+    public PostAdapter(PostsViewModel viewModel, OnItemClickListener clickListener) {
+        this.postList = viewModel.getPostList();
         this.clickListener = clickListener;
+        this.viewModel = viewModel;
+        this.likes = viewModel.getUserLikes();
+        this.dislikes = viewModel.getUserDislikes();
+        this.postID = viewModel.getPostID();
+        this.userLat = viewModel.getLatitude();
+        this.userLon = viewModel.getLongitude();
     }
 
     @NonNull
@@ -64,144 +79,18 @@ public class PostAdapter extends RecyclerView.Adapter<PostAdapter.PostViewHolder
 
     @Override
     public void onBindViewHolder(@NonNull PostViewHolder holder, int position) {
+
         Post post = postList.get(position);
-
-        TextView postView  = holder.postView;
-        postView.setText(post.getPost());
-
-        TextView score = holder.score;
-        score.setText(Integer.toString(post.getScore()));
-
-        TextView numComments  = holder.numComments;
-        numComments.setText(Integer.toString(post.getNumComments()) + " comments");
-
-        TextView timeFromPost = holder.timeFromPost;
-        timeFromPost.setText("5m");
-
-        updateFields(holder, position);
-    }
-
-    @Override
-    public int getItemCount() {
-        return postList.size();
-    }
-
-    public class PostViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
-        private TextView postView, score, numComments, timeFromPost;
-        private ImageButton upvote, downvote;
-        private LinearLayout post;
-
-        public PostViewHolder(@NonNull View itemView) {
-            super(itemView);
-
-            postView = (TextView) itemView.findViewById(R.id.PostText);
-            score = (TextView) itemView.findViewById(R.id.score);
-            numComments = (TextView) itemView.findViewById(R.id.numComments);
-            timeFromPost = (TextView) itemView.findViewById(R.id.timeFromPost);
-            upvote = (ImageButton) itemView.findViewById(R.id.upvote);
-            downvote = (ImageButton) itemView.findViewById(R.id.downvote);
-            post = (LinearLayout) itemView.findViewById(R.id.postView);
-
-            post.setOnClickListener(this);
-            upvote.setOnClickListener(this);
-            downvote.setOnClickListener(this);
-        }
-
-        @Override
-        public void onClick(View view) {
-            clickListener.onItemClick(view, getAdapterPosition());
-        }
-    }
-
-    private void updateFields(PostViewHolder holder, int position) {
-        final TextView score = holder.score;
-        final TextView numComments = holder.numComments;
-        firestore.collection("posts").document(postID.get(position))
-                .addSnapshotListener(new EventListener<DocumentSnapshot>() {
-                    @Override
-                    public void onEvent(DocumentSnapshot snapshot, FirebaseFirestoreException e) {
-                        if (e != null) {
-                            e.printStackTrace();
-                            return;
-                        }
-
-                        if (snapshot != null && snapshot.exists()) {
-                            Log.d("Herd", "Current data: " + snapshot.getData());
-                            if (snapshot.getLong("score") != Long.parseLong(score.getText().toString())) {
-                                score.setText(snapshot.getLong("score").toString());
-                            }
-                            Log.d("Before split", numComments.getText().toString());
-                            String curNumComments = numComments.getText().toString().split(" ")[0];
-                            Log.d("After split", curNumComments);
-                            if (snapshot.getLong("numComments") != Long.parseLong(curNumComments)) {
-                                numComments.setText(snapshot.getLong("numComments").toString() + " comments");
-                            }
-                        } else {
-                            Log.d("Herd", "Current data: null");
-                        }
-                    }
-                });
-    }
-*/
-
-public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostViewHolder> {
-
-    //Firestore and other class variables
-    private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
-    private ArrayList<String> postID;
-    private OnItemClickListener clickListener;
-    private String userID;
-    private int time, distance;
-    private Float userLat, userLon;
-    private HashMap<Integer, PostViewHolder> holderList;
-    private SharedPreferences sharedPreferences;
-
-    //Constructor for Firestore Paging Adapter
-    public PostAdapter(@NonNull FirestorePagingOptions<Post> options, ArrayList<String> postID,
-                       SharedPreferences preferences, int time, int distance, OnItemClickListener clickListener) {
-        super(options);
-
-        //Initialize class variables
-        this.postID = postID;
-        this.sharedPreferences = preferences;
-        userID = sharedPreferences.getString("User ID", "");
-        this.time = time;
-        this.distance = distance;
-        this.userLat = sharedPreferences.getFloat("latitude", 0);
-        this.userLon = sharedPreferences.getFloat("longitude", 0);
-        this.clickListener = clickListener;
-        this.holderList = new HashMap<>();
-    }
-
-    public PostAdapter(@NonNull FirestorePagingOptions<Post> options, ArrayList<String> postID) {
-        super(options);
-        this.postID = postID;
-    }
-
-    public void setPostID(ArrayList<String> postID) {
-        this.postID = postID;
-    }
-
-    @Override
-    protected void onBindViewHolder(final PostViewHolder holder, final int position, Post post) {
-        Log.d("Herd", "In onBindViewHolder");
-
         int postDist = calcDistance(post.getLatitude(), post.getLongitude());
         int postTime = calcTime(post.getTime());
-        if (postDist <= distance && postTime <= time) {
+
+        if (postDist <= viewModel.getDistance() && postTime <= viewModel.getTime()) {
             //Bind data to view holder
             holder.postView.setText(post.getPost());
             holder.score.setText(Integer.toString(post.getScore()));
             holder.numComments.setText(Integer.toString(post.getNumComments()) + " comments");
             holder.timeFromPost.setText(calcTimeAgo(post.getTime()));
             holder.distance.setText(postDist + " miles");
-
-            Set<String> likes = new HashSet<String>(sharedPreferences.getStringSet("likes",
-                    new HashSet<String>()));
-            Set<String> dislikes = new HashSet<String>(sharedPreferences.getStringSet("dislikes",
-                    new HashSet<String>()));
-            //Log.d("Liked posts", likes.toString());
-            //Log.d("Dislikes posts", dislikes.toString());
 
             if (likes != null && likes.contains(postID.get(position))) {
                 holder.upvote.setImageResource(R.drawable.upvote_selected);
@@ -215,13 +104,12 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
                 holder.downvote.setImageResource(R.drawable.downvote);
             }
 
-            if (!holderList.containsKey(position)) {
-                holderList.put(position, holder);
-            }
             holder.itemView.setVisibility(View.VISIBLE);
             holder.itemView.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
+
         } else {
+
             RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) holder.itemView.getLayoutParams();
             if (position == 0)
                 params.height = 1;
@@ -229,11 +117,9 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
                 params.height = 0;
             params.width = LinearLayout.LayoutParams.MATCH_PARENT;
             holder.itemView.setVisibility(View.GONE);
-        }
-    }
 
-    public PostViewHolder getViewByPosition(int position) {
-        return holderList.get(position);
+        }
+
     }
 
     public static String calcTimeAgo(Timestamp postTime) {
@@ -280,43 +166,37 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         return miles;
     }
 
-    @Override
-    public void refresh() {
-        super.refresh();
-        holderList.clear();
+    public void updateItems() {
+        this.postList = viewModel.getPostList();
+        this.postID = viewModel.getPostID();
     }
 
-    @NonNull
+    public void updateLocation() {
+        this.userLat = viewModel.getLatitude();
+        this.userLon = viewModel.getLongitude();
+    }
+
     @Override
-    public PostViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        LayoutInflater inflater = LayoutInflater.from(parent.getContext());
-
-        //Inflate the custom post view layout
-        View postView = inflater.inflate(R.layout.post_view, parent, false);
-
-        //Return a new holder for the custom post view
-        PostViewHolder postViewHolder = new PostViewHolder(postView);
-        return postViewHolder;
+    public int getItemCount() {
+        return postList.size();
     }
 
     public class PostViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
-        //UI element variables for post view
-        public TextView postView, score, numComments, timeFromPost, distance;
-        public ImageButton upvote, downvote;
-        public LinearLayout post;
+        private TextView postView, score, numComments, timeFromPost, distance;
+        private ImageButton upvote, downvote;
+        private LinearLayout post;
 
         public PostViewHolder(@NonNull View itemView) {
             super(itemView);
 
-            //Initialize UI elements
-            postView = itemView.findViewById(R.id.PostText);
-            score = itemView.findViewById(R.id.score);
-            numComments = itemView.findViewById(R.id.numComments);
-            timeFromPost = itemView.findViewById(R.id.timeFromPost);
-            distance = itemView.findViewById(R.id.distance);
-            upvote = itemView.findViewById(R.id.upvote);
-            downvote = itemView.findViewById(R.id.downvote);
-            post = itemView.findViewById(R.id.postView);
+            postView = (TextView) itemView.findViewById(R.id.PostText);
+            score = (TextView) itemView.findViewById(R.id.score);
+            numComments = (TextView) itemView.findViewById(R.id.numComments);
+            timeFromPost = (TextView) itemView.findViewById(R.id.timeFromPost);
+            distance = (TextView) itemView.findViewById(R.id.distance);
+            upvote = (ImageButton) itemView.findViewById(R.id.upvote);
+            downvote = (ImageButton) itemView.findViewById(R.id.downvote);
+            post = (LinearLayout) itemView.findViewById(R.id.postView);
 
             post.setOnClickListener(this);
             upvote.setOnClickListener(this);
@@ -324,8 +204,8 @@ public class PostAdapter extends FirestorePagingAdapter<Post, PostAdapter.PostVi
         }
 
         @Override
-        public void onClick(View v) {
-            clickListener.onRowClick(v, getAdapterPosition());
+        public void onClick(View view) {
+            clickListener.onRowClick(view, getAdapterPosition());
         }
     }
 }

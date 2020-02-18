@@ -6,6 +6,11 @@
     android:layout_height="match_parent"
     tools:context=".ui.comments_viewer.CommentsActivity">
 
+    <com.example.herd.ui.comments_viewer.PostView
+        android:id="@+id/post"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/commentSwipeContainer"
         android:layout_width="match_parent"

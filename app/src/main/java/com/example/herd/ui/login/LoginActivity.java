@@ -73,6 +73,8 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, ACCESS_FINE_LOCATION);
 
+        } else {
+            getLocation();
         }
     }
 
@@ -91,17 +93,46 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
 
                     getLocation();
 
+                } else {
+                    signInButton.setClickable(true);
                 }
                 break;
             }
         }
     }
 
-    //Helper method for adding users to Firestore
+    //Helper method to get the users location
+    private void getLocation() {
+
+        //Call view model function to get location observable
+        viewModel.getLocation().observe(this, new Observer<Location>() {
+            @Override
+            public void onChanged(Location location) {
+
+                //If the location was retrieved successfully, add the user
+                if (location != null) {
+
+                    Log.d(TAG, "Location: " + location.toString());
+                    addUser(location);
+
+                } else {
+
+                    signInButton.setClickable(true);
+                    //Notify the user their location wasn't retrieved
+                    Toast.makeText(getApplicationContext(), "Couldn't get location, can't load posts specific to your area",
+                            Toast.LENGTH_LONG).show();
+                    addUser(null);
+                }
+            }
+        });
+
+    }
+
+    //Helper method for adding users to Firestore and local storage
     private void addUser(Location location) {
 
-        //Call view model function to add user and add observer
-        viewModel.addUser(location.getLatitude(), location.getLongitude())
+        //View Model observable for adding user to Firestore and local storage
+        viewModel.addUser(location)
                 .observe(this, new Observer<Boolean>() {
                     @Override
                     public void onChanged(Boolean aBoolean) {
@@ -115,35 +146,14 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
 
                         } else {
 
+                            signInButton.setClickable(true);
                             //Notify user that they couldn't be added to Firestore
-                            Toast.makeText(getApplicationContext(), "Unable to add user", Toast.LENGTH_LONG).show();
+                            Toast.makeText(getApplicationContext(), "Unable to add user, check your internet connection and try again",
+                                    Toast.LENGTH_LONG).show();
+
                         }
                     }
                 });
-    }
-
-    //Helper method to get the users location
-    private void getLocation() {
-
-        //Call view model function to get the user's location
-        viewModel.getLocation().observe(this, new Observer<Location>() {
-            @Override
-            public void onChanged(Location location) {
-
-                //If the location was retrieved successfully, add the user to the Firestore
-                if (location != null) {
-
-                    Log.d(TAG, "Location received");
-                    addUser(location);
-
-                } else {
-
-                    //Notify the user their location wasn't retrieved
-                    Toast.makeText(getApplicationContext(), "Couldn't get location",  Toast.LENGTH_LONG).show();
-                }
-            }
-        });
-
     }
 
     @Override
@@ -153,24 +163,40 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
 
             case R.id.signInButton:
 
-                //Call the view model function to authenticate users when signInButton selected
-                viewModel.signIn().observe(this, new Observer<Boolean>() {
-                    @Override
-                    public void onChanged(Boolean aBoolean) {
+                //Will be true if authentication was successful but adding user to Firestore failed
+                //or the user denied the location permission
+                if (viewModel.checkSignedIn()) {
 
-                        //If user authentication is successful, request the fine location permission
-                        if (aBoolean == true) {
-
-                            Log.d(TAG, "Authentication successful");
-                            requestFineLocation();
-
-                        } else {
-
-                            //Notify the user that authentication failed
-                            Toast.makeText(getApplicationContext(), "Unable to sign in", Toast.LENGTH_LONG).show();
-                        }
+                    if (viewModel.checkLocation()) {
+                        addUser(null);
+                    } else {
+                        requestFineLocation();
                     }
-                });
+
+                } else {
+
+                    //Call the view model function to authenticate users when signInButton selected
+                    viewModel.signIn().observe(this, new Observer<Boolean>() {
+                        @Override
+                        public void onChanged(Boolean aBoolean) {
+
+                            //If user authentication is successful, request the fine location permission
+                            if (aBoolean == true) {
+
+                                Log.d(TAG, "Authentication successful");
+                                viewModel.setUserName();
+                                requestFineLocation();
+
+                            } else {
+
+                                //Notify the user that authentication failed
+                                Toast.makeText(getApplicationContext(), "Unable to sign in, check your connection and try again",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        }
+                    });
+                }
+                signInButton.setClickable(false);
                 break;
         }
     }
@@ -181,12 +207,18 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         Log.d(TAG, "onStart");
 
         //If the user already signed in, go to Home Activity
-        if (viewModel.checkSignedIn().getValue()) {
+        if (viewModel != null && viewModel.checkSignedIn()) {
 
             Intent intent = new Intent(getApplicationContext(), HomeActivity.class);
             startActivity(intent);
 
         }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        viewModel.getLocation().removeObservers(this);
     }
 }
 

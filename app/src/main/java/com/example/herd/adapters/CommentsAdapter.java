@@ -11,12 +11,15 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.lifecycle.ViewModel;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.RecyclerView.ViewHolder;
 
 import com.example.herd.R;
 import com.example.herd.interfaces.OnItemClickListener;
 import com.example.herd.models.Post;
+import com.example.herd.ui.comments_viewer.CommentsViewModel;
+import com.example.herd.ui.posts_viewer.PostsViewModel;
 import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.FirebaseFirestore;
 
@@ -31,71 +34,63 @@ import java.util.concurrent.TimeUnit;
 
 public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostViewHolder> {
 
-    //Local variables
-    private ArrayList<Post> commentList;
-    private ArrayList<String> commentID;
-    private OnItemClickListener clickListener;
-    private Float userLat, userLon;
-    private HashMap<Integer, CommentsAdapter.PostViewHolder> holderList;
-    private SharedPreferences sharedPreferences;
+    private final String TAG = "CommentsAdapter";
 
-    public CommentsAdapter(ArrayList<Post> commentList, ArrayList<String> commentID,
-                           SharedPreferences preferences, OnItemClickListener clickListener) {
-        this.commentList = commentList;
-        this.commentID = commentID;
+    //Local variables
+    private ArrayList<Post> postList;
+    private OnItemClickListener clickListener;
+    private CommentsViewModel viewModel;
+    private ArrayList<String> likes, dislikes, postID;
+    private double userLat, userLon;
+
+    public CommentsAdapter(CommentsViewModel viewModel, OnItemClickListener clickListener) {
+        this.postList = viewModel.getPostList();
         this.clickListener = clickListener;
-        this.holderList = new HashMap<>();
-        this.sharedPreferences = preferences;
-        this.userLat = preferences.getFloat("latitude", 0);
-        this.userLon = preferences.getFloat("longitude", 0);
+        this.viewModel = viewModel;
+        this.likes = viewModel.getUserLikes();
+        this.dislikes = viewModel.getUserDislikes();
+        this.postID = viewModel.getPostIDList();
+        this.userLat = viewModel.getLatitude();
+        this.userLon = viewModel.getLongitude();
+    }
+
+    @NonNull
+    @Override
+    public CommentsAdapter.PostViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        Context context = parent.getContext();
+        LayoutInflater inflater = LayoutInflater.from(context);
+
+        //Inflate the custom post view layout
+        View postView = inflater.inflate(R.layout.post_view, parent, false);
+
+        //Return a new holder for the custom post view
+        CommentsAdapter.PostViewHolder postViewHolder = new CommentsAdapter.PostViewHolder(postView);
+        return postViewHolder;
     }
 
     @Override
-    public void onBindViewHolder(@NonNull PostViewHolder holder, int position) {
+    public void onBindViewHolder(@NonNull CommentsAdapter.PostViewHolder holder, int position) {
 
-        Post post = commentList.get(position);
+        Post post = postList.get(position);
+        int postDist = calcDistance(post.getLatitude(), post.getLongitude());
 
-        //Bind data to view holder
         holder.postView.setText(post.getPost());
         holder.score.setText(Integer.toString(post.getScore()));
         holder.numComments.setText(Integer.toString(post.getNumComments()) + " comments");
         holder.timeFromPost.setText(calcTimeAgo(post.getTime()));
-        holder.distance.setText(calcDistance(post.getLatitude(), post.getLongitude()) + " miles");
+        holder.distance.setText(postDist + " miles");
 
-        Set<String> likes, dislikes;
-
-        if (position == 0) {
-            likes = sharedPreferences.getStringSet("likes", new HashSet<String>());
-            dislikes = sharedPreferences.getStringSet("dislikes", new HashSet<String>());
-        } else {
-            likes = sharedPreferences.getStringSet("Comment Likes", new HashSet<String>());
-            dislikes = sharedPreferences.getStringSet("Comment Dislikes", new HashSet<String>());
-        }
-
-        if (likes != null && likes.contains(commentID.get(position))) {
+        if (likes != null && likes.contains(postID.get(position))) {
             holder.upvote.setImageResource(R.drawable.upvote_selected);
         } else {
             holder.upvote.setImageResource(R.drawable.upvote);
         }
 
-        if (dislikes != null && dislikes.contains(commentID.get(position))) {
+        if (dislikes != null && dislikes.contains(postID.get(position))) {
             holder.downvote.setImageResource(R.drawable.downvote_selected);
         } else {
             holder.downvote.setImageResource(R.drawable.downvote);
         }
-
-        if (position == 0) {
-            holder.postView.setTextSize(36);
-        }
-
-        if (!holderList.containsKey(position)) {
-            holderList.put(position, holder);
-        }
-
-    }
-
-    public PostViewHolder getViewByPosition(int position) {
-        return holderList.get(position);
     }
 
     public static String calcTimeAgo(Timestamp postTime) {
@@ -134,27 +129,20 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
         return miles;
     }
 
+    public void updateItems() {
+        this.postList = viewModel.getPostList();
+        this.postID = viewModel.getPostIDList();
+    }
+
     @Override
     public int getItemCount() {
-        return commentList.size();
+        return postList.size();
     }
 
-    @NonNull
-    @Override
-    public PostViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        Context context = parent.getContext();
-        LayoutInflater inflater = LayoutInflater.from(context);
-        View postView = inflater.inflate(R.layout.post_view, parent, false);
-
-        //Return a new holder for the custom post view
-        PostViewHolder postViewHolder = new PostViewHolder(postView);
-        return postViewHolder;
-    }
-
-    public class PostViewHolder extends ViewHolder implements View.OnClickListener {
-        public TextView postView, score, numComments, timeFromPost, distance;
-        public ImageButton upvote, downvote;
-        public LinearLayout post;
+    public class PostViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
+        private TextView postView, score, numComments, timeFromPost, distance;
+        private ImageButton upvote, downvote;
+        private LinearLayout post;
 
         public PostViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -168,6 +156,7 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
             downvote = (ImageButton) itemView.findViewById(R.id.downvote);
             post = (LinearLayout) itemView.findViewById(R.id.postView);
 
+            post.setOnClickListener(this);
             upvote.setOnClickListener(this);
             downvote.setOnClickListener(this);
         }
@@ -177,4 +166,5 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
             clickListener.onRowClick(view, getAdapterPosition());
         }
     }
+
 }

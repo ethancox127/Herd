@@ -31,6 +31,9 @@ import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.Observer;
+import androidx.lifecycle.ViewModelProviders;
 import androidx.paging.PagedList;
 import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -67,6 +70,8 @@ import java.util.Set;
 
 public class PostsFragment extends Fragment implements View.OnClickListener, SwipeRefreshLayout.OnRefreshListener {
 
+    private final String TAG = "PostsFragment";
+
     //UI element variables
     private ProgressBar progressBar;
     private FloatingActionButton addPostButton;
@@ -74,46 +79,11 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
     private SwipeRefreshLayout swipeContainer;
     private MaterialButton hotButton, newButton;
 
-    //Firebase variables
-    private FirebaseFirestore firestore = FirebaseFirestore.getInstance();
-
     //Recycler view and associated variables
     private RecyclerView postsRecyclerView;
     private PostAdapter postAdapter;
-    private LinearLayoutManager postsLayoutManager;
 
-    //Timestamp variable for differentiating between posts added after last load
-    public static Timestamp curTime;
-
-    //SharedPreferences instance and editor
-    private SharedPreferences preferences;
-    private SharedPreferences.Editor editor;
-
-    //Posts and related variables variables
-    private ArrayList<String> postID = new ArrayList<>();
-    private ArrayList<Post> postList = new ArrayList<>();
-    private ArrayList<String> newPostID = new ArrayList<>();
-    private ArrayList<Post> newPostList = new ArrayList<>();
-    private Set<String> likes;
-    private Set<String> dislikes;
-    private int numNewPosts = 0;
-    private String userID;
-
-    //Private query flags
-    private String type = "hot";
-    private int distance = 10;
-    private int time = 12;
-    private Query newPosts;
-    private ListenerRegistration registration;
-
-    //Location variables
-    private LocationManager locationManager;
-    private LocationListener locationListener;
-    private Location location;
-    private float latitude, longitude, prevLat, prevLon;
-
-    //Permission codes
-    private final int ACCESS_FINE_LOCATION = 1;
+    private PostsViewModel viewModel;
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -130,23 +100,6 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
         hotButton = root.findViewById(R.id.hotButton);
         newButton = root.findViewById(R.id.newButton);
 
-        //Initialize the SharedPreferences
-        preferences = getContext().getSharedPreferences("MyPref", Context.MODE_PRIVATE);
-        editor = preferences.edit();
-
-        //Get user info from SharedPreferences
-        likes = preferences.getStringSet("likes", new HashSet<String>());
-        dislikes = preferences.getStringSet("dislikes", new HashSet<String>());
-        userID = preferences.getString("User ID", "");
-        prevLat = preferences.getFloat("latitude", 0);
-        prevLon = preferences.getFloat("longitude", 0);
-
-        //Get curTime to separate between posts already in firestore and those received after
-        curTime = Timestamp.now();
-
-        //Initialize the linear layout manager for the recycler view
-        postsLayoutManager = new LinearLayoutManager(getContext());
-
         //Notify fragment there is a menu
         setHasOptionsMenu(true);
 
@@ -156,487 +109,126 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
         newButton.setOnClickListener(this);
         swipeContainer.setOnRefreshListener(this);
 
-        //Initialize location handlers and request location updates
-        setUpLocationHandlers();
-        requestFineLocation();
-
         return root;
     }
 
-    //Initialize the locationListener and locationManager
-    private void setUpLocationHandlers() {
+    private void displayPosts(LiveData<ArrayList<Post>> posts) {
 
-        locationListener  = new LocationListener() {
+        posts.observe(this, new Observer<ArrayList<Post>>() {
             @Override
-            public void onLocationChanged(Location location) {
+            public void onChanged(ArrayList<Post> posts) {
 
-                //Get the user's new latitude and longitude
-                latitude = (float) location.getLatitude();
-                longitude = (float) location.getLongitude();
+                if (postAdapter == null) {
+                    postAdapter = new PostAdapter(viewModel, new OnItemClickListener() {
+                        @Override
+                        public void onRowClick(View view, int position) {
 
-                //If the user's location has changed, prompt if they want to reload posts
-                if (prevLat != latitude || prevLon != longitude) {
-                    changeLocation();
-                }
-            }
+                            String postID = viewModel.getPostID().get(position);
 
-            @Override
-            public void onStatusChanged(String provider, int status, Bundle extras) { }
+                            switch (view.getId()) {
 
-            @Override
-            public void onProviderEnabled(String provider) { }
+                                case R.id.postView:
 
-            @Override
-            public void onProviderDisabled(String provider) { }
-        };
+                                    Intent intent = new Intent(getContext(), CommentsActivity.class);
+                                    intent.putExtra("Post ID", postID);
+                                    intent.putExtra("Post", viewModel.getPostList().get(position));
+                                    startActivity(intent);
+                                    break;
 
-        locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
-    }
+                                case R.id.upvote:
 
-    //Helper function prompting user if they want to load posts around new location
-    private void changeLocation() {
+                                    if (viewModel.checkForLike(postID)) {
 
-        //Create new AlertDialog Builder and set it's properties
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
-        builder.setMessage("Your location has changed.  Load posts for new location?")
-                .setCancelable(false)
-                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int id) {
+                                        viewModel.updateScore(postID, -1);
+                                        viewModel.removeLike(postID);
 
-                        //Add the latitude and longitude to the Shared Preferences
-                        editor.putFloat("latitude", latitude);
-                        editor.putFloat("longitude", longitude);
-                        editor.commit();
+                                    } else {
 
-                        //Update the previous latitude and longitude
-                        prevLat = latitude;
-                        prevLon = longitude;
+                                        viewModel.updateScore(postID, 1);
+                                        viewModel.addLike(postID);
 
-                        //Display the posts around the new location
-                        displayPosts();
-                    }
-                });
+                                        if (viewModel.checkForDislike(postID)) {
+                                            viewModel.removeDislike(postID);
+                                        }
+                                    }
+                                    break;
 
-        //Create and show the AlertDialog
-        AlertDialog alert = builder.create();
-        alert.show();
-    }
+                                case R.id.downvote:
 
-    //Handler method for requesting the Access Fine Location permission
-    private void requestFineLocation() {
+                                    if (viewModel.checkForDislike(postID)) {
 
-        //Check if user has granted location permissions
-        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+                                        viewModel.updateScore(postID, 1);
+                                        viewModel.removeDislike(postID);
 
-            //Request the fine location permission so I can access their location
-            ActivityCompat.requestPermissions(getActivity(),
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, ACCESS_FINE_LOCATION);
-        } else {
+                                    } else {
 
-            //Request location updates so that the user's current location will not be null
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                    1000, 16093.4f, locationListener);
-        }
-    }
+                                        viewModel.updateScore(postID, -1);
+                                        viewModel.addDislike(postID);
 
-    //Handle permission request results
-    @TargetApi(Build.VERSION_CODES.M)
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+                                        if (viewModel.checkForLike(postID)) {
+                                            viewModel.removeLike(postID);
+                                        }
+                                    }
+                                    break;
 
-        switch (requestCode) {
+                            }
+                        }
+                    });
 
-            case ACCESS_FINE_LOCATION: {
+                    postsRecyclerView.setAdapter(postAdapter);
+                    postsRecyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
+                    postsRecyclerView.addItemDecoration(new DividerItemDecoration(getContext(),
+                            DividerItemDecoration.VERTICAL));
 
-                //Check that the fine location permission has been properly granted
-                if (grantResults.length > 0 && getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                        == PackageManager.PERMISSION_GRANTED) {
-
-                    //Request location updates so that the user's current location will not be null
-                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                            1000, 16093.4f, locationListener);
                 } else {
-                    //Location permission has not been granted, notify user
-                    Toast.makeText(getContext(), "Location not granted, won't query for posts near you",
-                            Toast.LENGTH_LONG).show();
-                }
-                return;
-            }
-        }
-    }
 
-    //Helper function for displaying posts
-    private void displayPosts() {
+                    postAdapter.updateItems();
+                    postAdapter.updateLocation();
+                    postAdapter.notifyDataSetChanged();
 
-        //Get query given flags
-        final Query query = updateQuery();
-
-        //Create paged list configurations
-        final PagedList.Config config = new PagedList.Config.Builder()
-                .setEnablePlaceholders(false)
-                .setPrefetchDistance(10)
-                .setPageSize(10)
-                .build();
-
-        //Create Firestore Paging Options and parse posts in postsList and PostID's for other use
-        FirestorePagingOptions<Post> options = new FirestorePagingOptions.Builder<Post>()
-                .setLifecycleOwner(this)
-                .setQuery(query, config, new SnapshotParser<Post>() {
-                    @NonNull
-                    @Override
-                    public Post parseSnapshot(@NonNull DocumentSnapshot snapshot) {
-                        Log.d("Herd", "In parseSnapshot");
-                        Log.d("Herd", snapshot.getData().toString());
-                        int index = postID.indexOf(snapshot.getId());
-                        Post post = snapshot.toObject(Post.class);
-                        Log.d("Post", post.toString());
-                        Log.d("Index", Integer.toString(index));
-                        if (index != -1) {
-                            postList.set(index, post);
-                        } else {
-                            int newIndex = newPostID.indexOf(snapshot.getId());
-                            Log.d("New Index", Integer.toString(newIndex));
-                            Log.d("New posts ID's", newPostID.toString());
-                            if (newIndex != -1) {
-                                Log.d("Parse snapshot", "in second if");
-                                Post post1 = newPostList.remove(newIndex);
-                                Log.d("New post", post1.toString());
-                                postList.add(post1);
-                                postID.add(newPostID.remove(newIndex));
-                                return post1;
-                            }
-                            postList.add(post);
-                            postID.add(snapshot.getId());
-                        }
-                        return post;
-                    }
-                })
-                .build();
-
-        //Create Post adapter
-        postAdapter = new PostAdapter(options, postID, preferences, time, distance, new OnItemClickListener() {
-            @Override
-            //Called when a post is clicked
-            //Get post and post ID at that position and start activity to display post and comments
-            public void onRowClick(View view, int position) {
-
-                //Get the post id and associated holder
-                String id = postID.get(position);
-                PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
-                int score =  Integer.valueOf(holder.score.getText().toString());
-
-                //Get the like and dislike set from SharedPreferences
-                Set<String> likeSet = new HashSet<String>(preferences.getStringSet("likes",
-                        new HashSet<String>()));
-                Set<String> dislikeSet = new HashSet<String>(preferences.getStringSet("dislikes",
-                        new HashSet<String>()));
-
-                switch (view.getId()) {
-
-                    //Post selected
-                    case R.id.postView:
-                        Intent intent = new Intent(getContext(), CommentsActivity.class);
-                        intent.putExtra("Post", postList.get(position));
-                        intent.putExtra("Post ID", id);
-                        startActivity(intent);
-                        break;
-
-                    //Upvote button selected
-                    case R.id.upvote:
-
-                        //If upvote button is already selected notify user
-                        if (likeSet != null && likeSet.contains(id)) {
-
-                            Toast.makeText(getContext(), "You already liked that post",
-                                    Toast.LENGTH_SHORT).show();
-
-                        } else {
-
-                            //Add the liked post to shared preferences
-                            likeSet.add(id);
-                            editor.putStringSet("likes", new HashSet<String>(likeSet));
-                            editor.apply();
-                            editor.commit();
-
-                            //Update post view holder
-                            holder.upvote.setImageResource(R.drawable.upvote_selected);
-                            score++;
-                            holder.score.setText(Integer.toString(score));
-
-                            //If the post was already disliked by the user remove it from the dislike set
-                            if (dislikeSet != null && dislikeSet.contains(id)) {
-
-                                dislikeSet.remove(id);
-                                editor.putStringSet("dislikes", new HashSet<String>(dislikeSet));
-                                editor.apply();
-                                editor.commit();
-
-                                //Update the view holder again
-                                holder.downvote.setImageResource(R.drawable.downvote);
-                            }
-
-                            //Update user's liked posts on Firestore
-                            updateLikes(id);
-                        }
-                        break;
-
-                    //Downvote button selected
-                    case R.id.downvote:
-
-                        if (dislikeSet != null && dislikeSet.contains(id)) {
-                            Toast.makeText(getContext(), "You already disliked that post",
-                                    Toast.LENGTH_SHORT).show();
-                        } else {
-
-                            //Add the disliked post to shared preferences
-                            dislikeSet.add(id);
-                            editor.putStringSet("dislikes", new HashSet<String>(dislikeSet));
-                            editor.apply();
-                            editor.commit();
-
-                            //Update  the view holder
-                            holder.downvote.setImageResource(R.drawable.downvote_selected);
-                            score--;
-                            holder.score.setText(Integer.toString(score));
-
-                            //Update the liked posts if needed
-                            if (likeSet != null && likeSet.contains(id)) {
-
-                                likeSet.remove(id);
-                                editor.putStringSet("likes", new HashSet<String>(likeSet));
-                                editor.apply();
-                                editor.commit();
-
-                                //Update the view holder
-                                holder.upvote.setImageResource(R.drawable.upvote);
-                            }
-
-                            //Update the user's dislikes posts on Firestore
-                            updateDislikes(id);
-                        }
-                        break;
                 }
             }
         });
 
-        //Set the adapter for the recycler view and add the decorations and layout manager
-        postsRecyclerView.setAdapter(postAdapter);
-        postsRecyclerView.setLayoutManager(postsLayoutManager);
-        postsRecyclerView.addItemDecoration(new DividerItemDecoration(getContext(), postsLayoutManager.getOrientation()){
-            @Override
-            public void getItemOffsets(Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
-                //If post was filtered out in Adapter, don't display decoration item
-                if (view.getVisibility() == View.GONE) {
-                    outRect.setEmpty();
-                } else {
-                    super.getItemOffsets(outRect, view, parent, state);
-                }
-            }
-        });
-
-        //Remove listener if one exists
-        if (registration != null) {
-            registration.remove();
-        }
-
-        //If new posts are displayed create new listener
-        if (type == "new") {
-            listenForNewPosts();
-        }
     }
 
-    //Helper function listening for new/modified firestore posts
     private void listenForNewPosts() {
+        viewModel.newPosts().observe(this, new Observer<Boolean>() {
+            @Override
+            public void onChanged(Boolean aBoolean) {
+                if (aBoolean == true)
+                    addButton();
+            }
+        });
+    }
 
-        //Query for all posts ordered by time
-        newPosts = firestore.collection("posts")
-                .orderBy("time", Query.Direction.DESCENDING);
+    private void listenForLocationChanges() {
+        viewModel.getLocation().observe(this, new Observer<Location>() {
+            @Override
+            public void onChanged(Location location) {
+                Log.d(TAG, "onChanged");
 
-        //Created Snapshot Listener for query
-        registration = newPosts.addSnapshotListener(
-                new EventListener<QuerySnapshot>() {
-                    @Override
-                    public void onEvent(@Nullable QuerySnapshot queryDocumentSnapshots,
-                                        @Nullable FirebaseFirestoreException e) {
-                        if (e != null) {
-                            e.printStackTrace();
-                        }
-
-                        if (queryDocumentSnapshots != null)  {
-
-                            //Get document change for each document in query snapshot
-                            for (DocumentChange dc : queryDocumentSnapshots.getDocumentChanges())  {
-
-                                Post post = dc.getDocument().toObject(Post.class);
-
-                                switch (dc.getType()) {
-
-                                    case ADDED:
-
-                                        //Add new post to new post lists
-                                        if (!postID.contains(dc.getDocument().getId())) {
-                                            newPostList.add(post);
-                                            newPostID.add(dc.getDocument().getId());
-                                        }
-
-                                        //Add New Posts button if this is first new post
-                                        if (post.getTime().toDate().after(curTime.toDate())) {
-                                            if (numNewPosts == 0 && post.getUserID() != userID) {
-                                                addButton();
-                                            }
-                                            numNewPosts++;
-                                        }
-                                        break;
-
-                                    case MODIFIED:
-
-                                        int position = postID.indexOf(dc.getDocument().getId());
-                                        int newPos = newPostID.indexOf(dc.getDocument().getId());
-
-                                        //If the post has a holder created for it, update the holder
-                                        if (position != -1) {
-
-                                            PostAdapter.PostViewHolder holder = postAdapter.getViewByPosition(position);
-
-                                            //Update the score if necessary
-                                            if (dc.getDocument().getLong("score") !=
-                                                    Long.parseLong(holder.score.getText().toString())) {
-
-                                                holder.score.setText(dc.getDocument().getLong("score").toString());
-
-                                            }
-
-                                            //Update the number of comments if necessary
-                                            String curNumComments = holder.numComments.getText().toString()
-                                                    .split(" ")[0];
-                                            if (dc.getDocument().getLong("numComments") !=
-                                                    Long.parseLong(curNumComments)) {
-
-                                                holder.numComments.setText(dc.getDocument().getLong("numComments")
-                                                        .toString() + " comments");
-
-                                            }
-
-                                        } else if (newPos != -1) {
-
-                                            //If holder hasn't been created for post, update it in new post list
-                                            newPostList.set(newPos, dc.getDocument().toObject(Post.class));
-
-                                        }
-                                        break;
-                                }
+                AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+                builder.setMessage("Your location has changed, would you like to load posts near it?")
+                        .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                viewModel.setLatitude(location.getLatitude());
+                                viewModel.setLongitude(location.getLongitude());
+                                postAdapter.updateLocation();
+                                reloadPosts();
+                                dialog.dismiss();
                             }
-                        } else {
-                            Log.d("Herd", "Could not get new data");
-                        }
-                    }
-                });
-    }
-
-    //Helper function managing the query for the adapter
-    private Query updateQuery() {
-
-        if (type == "hot") {
-            return firestore.collection("posts")
-                    .orderBy("score", Query.Direction.DESCENDING);
-        } else {
-            return firestore.collection("posts")
-                    .whereLessThan("time", curTime)
-                    .orderBy("time", Query.Direction.DESCENDING);
-        }
-
-    }
-
-    //Update the score for the appropriate post by value (1 or -1)
-    private void updateScore(String postID, int value) {
-        firestore.collection("posts").document(postID)
-                .update("score", FieldValue.increment(value))
-                .addOnCompleteListener(new OnCompleteListener<Void>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Void> task) {
-                        if (task.isSuccessful()) {
-                            Log.d("Herd", "Post score update successful");
-                        } else {
-                            Log.d("Herd", "Post score update failed");
-                            task.getException().printStackTrace();
-                        }
-                    }
-                });
-    }
-
-    private void updateLikes(final String id) {
-        firestore.collection("users")
-                .document(userID)
-                .update("likes", FieldValue.arrayUnion(id))
-                .addOnCompleteListener(new OnCompleteListener<Void>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Void> task) {
-                        if (task.isSuccessful()) {
-                            Log.d("Herd", "Updated user's liked posts");
-                            if (dislikes != null && dislikes.contains(id)) {
-                                removeDislike(id);
+                        })
+                        .setNegativeButton("No", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
                             }
-                            updateScore(id, 1);
-                        } else {
-                            Log.d("Herd", "Unable to update user's liked posts");
-                            task.getException().printStackTrace();
-                        }
-                    }
-                });
-    }
-
-    private void removeLike(final String id) {
-        firestore.collection("users")
-                .document(userID)
-                .update("likes", FieldValue.arrayRemove(id))
-                .addOnCompleteListener(new OnCompleteListener<Void>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Void> task) {
-                        if (task.isSuccessful()) {
-                            Log.d("Herd", "Updated user's liked posts");
-                        } else {
-                            Log.d("Herd", "Unable to update user's liked posts");
-                            task.getException().printStackTrace();
-                        }
-                    }
-                });
-    }
-
-    private void updateDislikes(final String id) {
-        firestore.collection("users")
-                .document(userID)
-                .update("dislikes", FieldValue.arrayUnion(id))
-                .addOnCompleteListener(new OnCompleteListener<Void>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Void> task) {
-                        if (task.isSuccessful()) {
-                            Log.d("Herd", "Dislike added");
-                            if (likes != null && likes.contains(id)) {
-                                removeLike(id);
-                            }
-                            updateScore(id, -1);
-                        } else {
-                            task.getException().printStackTrace();
-                        }
-                    }
-                });
-    }
-
-    private void removeDislike(final String id) {
-        firestore.collection("users")
-                .document(userID)
-                .update("dislikes", FieldValue.arrayRemove(id))
-                .addOnCompleteListener(new OnCompleteListener<Void>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Void> task) {
-                        if (task.isSuccessful()) {
-                            Log.d("Herd", "Dislike removed");
-                        } else {
-                            task.getException().printStackTrace();
-                        }
-                    }
-                });
+                        });
+                builder.show();
+            }
+        });
     }
 
     //Add the new posts button to the layout and set it's click listener
@@ -648,21 +240,22 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
     //Set the filter menu for the fragment
     @Override
     public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
-        Log.d("Herd", "In onCreateOptionsMenu");
         inflater.inflate(R.menu.filter_menu, menu);
     }
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == R.id.filter) {
+
             final Dialog dialog = new Dialog(getContext());
             dialog.setContentView(R.layout.filter_options);
             SeekBar distanceBar = dialog.findViewById(R.id.distanceSeekBar);
             SeekBar timeBar = dialog.findViewById(R.id.timeSeekBar);
+
             distanceBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override
                 public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                    distance = progress;
+                    viewModel.setDistance(progress);
                 }
 
                 @Override
@@ -679,7 +272,7 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
             timeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override
                 public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                    time = progress;
+                    viewModel.setTime(progress);
                 }
 
                 @Override
@@ -692,20 +285,23 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
 
                 }
             });
+
             dialog.findViewById(R.id.closeButton).setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    Log.d("Time", Integer.toString(time));
-                    Log.d("Distance", Integer.toString(distance));
-                    postList.clear();
-                    postID.clear();
-                    curTime = Timestamp.now();
-                    displayPosts();
+
+                    Log.d(TAG, Integer.toString(viewModel.getDistance()));
+                    Log.d(TAG, Integer.toString(viewModel.getTime()));
+
+                    reloadPosts();
+
                     dialog.dismiss();
                 }
             });
+
             dialog.show();
             return true;
+
         } else {
             return super.onOptionsItemSelected(item);
         }
@@ -726,24 +322,14 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
 
              //If the new posts button is clicked refresh the adapter and remove the button
             case R.id.newPostsButton:
-                postList.clear();
-                postID.clear();
                 newPostsButton.setVisibility(View.GONE);
-                //Update the time to listen for new posts after
-                curTime = Timestamp.now();
-                postAdapter.refresh();
-                registration.remove();
-                listenForNewPosts();
+                displayPosts(viewModel.getNewPosts());
 
             case R.id.newButton:
                 if (!newButton.isChecked()) {
                     newButton.setChecked(true);
                 } else {
-                    postList.clear();
-                    postID.clear();
-                    type = "new";
-                    curTime = Timestamp.now();
-                    displayPosts();
+                    displayPosts(viewModel.getNewPosts());
                 }
                 break;
 
@@ -751,13 +337,17 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
                 if (!hotButton.isChecked())  {
                     hotButton.setChecked(true);
                 } else {
-                    postList.clear();
-                    postID.clear();
-                    type = "hot";
-                    curTime = Timestamp.now();
-                    displayPosts();
+                    displayPosts(viewModel.getTopPosts());
                 }
                 break;
+        }
+    }
+
+    private void reloadPosts() {
+        if (viewModel.getType() == "top") {
+            displayPosts(viewModel.getTopPosts());
+        } else {
+            displayPosts(viewModel.getNewPosts());
         }
     }
 
@@ -765,34 +355,24 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
     public void onStart() {
         Log.d("Home fragment", "In on start");
         super.onStart();
-
-        postList.clear();
-        postID.clear();
-        curTime = Timestamp.now();
-        displayPosts();
-
-        //Activity starting, listen for new posts
-        postAdapter.startListening();
+        viewModel = ViewModelProviders.of(this).get(PostsViewModel.class);
+        reloadPosts();
+        listenForNewPosts();
+        listenForLocationChanges();
     }
 
     @Override
     public void onStop() {
         Log.d("Home fragment","In on stop");
         super.onStop();
-        //Activity stopping, stop listening for new posts
-        postAdapter.stopListening();
         newPostsButton.setVisibility(View.GONE);
-        editor.commit();
     }
 
     @Override
     public void onRefresh() {
         //Refresh the adapter and remove the spinner when done
         Log.d("Herd", "In onRefresh");
-        postList.clear();
-        postID.clear();
-        curTime = Timestamp.now();
-        postAdapter.refresh();
+        reloadPosts();
         swipeContainer.setRefreshing(false);
     }
 }

@@ -41,14 +41,13 @@ public class AuthRepository {
         return result;
     }
 
-    public LiveData<Boolean> checkSignedIn() {
-        final MutableLiveData result = new MutableLiveData();
-        if (mAuth.getCurrentUser() != null) {
-            result.setValue(true);
+    public boolean checkSignedIn() {
+
+        if (mAuth != null && mAuth.getCurrentUser() != null) {
+            return true;
         } else {
-            result.setValue(false);
+            return false;
         }
-        return result;
     }
 
 }
