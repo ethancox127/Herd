@@ -15,6 +15,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
@@ -66,6 +67,7 @@ public class CommentsViewModel extends AndroidViewModel {
 
     public void setQuery(String postID) {
         this.postID = postID;
+        likes.add(0, postID);
         commentsQuery = firestore.collection("posts")
                 .document(postID)
                 .collection("comments");
@@ -86,38 +88,63 @@ public class CommentsViewModel extends AndroidViewModel {
     public void addLike(String id) {
         Log.d(TAG, "addLike");
         likes.add(id);
-        dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_LIKED_POSTS, likes.toString());
-        userRepository.addToList("likedComments", id);
+        if (id == postID) {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_LIKED_POSTS, likes.toString());
+            userRepository.addToList("likedPosts", userID);
+        } else {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_LIKED_COMMENTS, likes.toString());
+            userRepository.addToList("likedComments", userID);
+        }
     }
 
     //Removes liked post from local db and firestore
     public void removeLike (String id) {
         Log.d(TAG, "removeLike");
         likes.remove(id);
-        dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_LIKED_POSTS, likes.toString());
-        userRepository.removeFromList("likedComments", id);
+        if (id == postID) {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_LIKED_POSTS, likes.toString());
+            userRepository.removeFromList("likedPosts", userID);
+        } else {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_LIKED_COMMENTS, likes.toString());
+            userRepository.removeFromList("likedComments", userID);
+        }
     }
 
     //Adds newly disliked post to local db and firestore
     public void addDislike(String id) {
         Log.d(TAG, "addDislike");
         dislikes.add(id);
-        dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_DISLIKED_POSTS, dislikes.toString());
-        userRepository.addToList("dislikedComments", id);
+        if (id == postID) {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_DISLIKED_POSTS, dislikes.toString());
+            userRepository.addToList("dislikedPosts", userID);
+        } else {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_DISLIKED_COMMENTS, dislikes.toString());
+            userRepository.addToList("dislikedComments", userID);
+        }
     }
 
     //Removes disliked post from local db and firestore
     public void removeDislike(String id) {
         Log.d(TAG, "removeDislike");
         dislikes.remove(id);
-        dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_DISLIKED_POSTS, dislikes.toString());
-        userRepository.removeFromList("dislikedComments", id);
+        if (id == postID) {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_DISLIKED_POSTS, dislikes.toString());
+            userRepository.addToList("dislikedPosts", userID);
+        } else {
+            dbRepsoitory.updateColumn(UserContract.UserEntry.COLUMN_NAME_DISLIKED_COMMENTS, dislikes.toString());
+            userRepository.addToList("dislikedComments", userID);
+        }
     }
 
     //Updates post score in firestore
     public void updateScore(String id, int score) {
         Log.d(TAG, "updateScore");
-        DocumentReference ref = commentsRef.document(id);
+        DocumentReference ref;
+        if (id == postID) {
+            ref = firestore.collection("posts").document(id);
+        } else {
+            ref = commentsRef.document(id);
+        }
         writeRepository.updateScore(ref, score);
     }
 
@@ -127,6 +154,11 @@ public class CommentsViewModel extends AndroidViewModel {
 
     public boolean checkForDislike(String id) {
         return dislikes.contains(id);
+    }
+
+    public void addToLists(Post post, String id) {
+        posts.add(0, post);
+        postIDList.add(0, id);
     }
 
     public ArrayList<Post> getPostList() { return posts; }
@@ -169,7 +201,6 @@ public class CommentsViewModel extends AndroidViewModel {
                 }
             }
 
-            posts = new ArrayList<>(snapshots.toObjects(Post.class));
             return posts;
         }
     }

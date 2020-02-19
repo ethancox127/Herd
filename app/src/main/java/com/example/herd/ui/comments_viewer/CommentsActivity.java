@@ -61,7 +61,6 @@ public class CommentsActivity extends AppCompatActivity implements View.OnClickL
     private SwipeRefreshLayout swipeRefreshLayout;
     private RecyclerView commentsRecyclerView;
     private FloatingActionButton floatingActionButton;
-    private PostView postView;
 
     //Other variables
     private CommentsAdapter postAdapter;
@@ -80,7 +79,6 @@ public class CommentsActivity extends AppCompatActivity implements View.OnClickL
         swipeRefreshLayout = (SwipeRefreshLayout) findViewById(R.id.commentSwipeContainer);
         commentsRecyclerView = (RecyclerView) findViewById(R.id.commentRecyclerView);
         floatingActionButton = (FloatingActionButton) findViewById(R.id.addCommentButton);
-        postView = findViewById(R.id.post);
 
         //Set click and refresh listeners
         swipeRefreshLayout.setOnRefreshListener(this);
@@ -96,6 +94,7 @@ public class CommentsActivity extends AppCompatActivity implements View.OnClickL
 
         viewModel = ViewModelProviders.of(this).get(CommentsViewModel.class);
         viewModel.setQuery(docID);
+        viewModel.addToLists(post, docID);
         displayComments(viewModel.getComments());
     }
 

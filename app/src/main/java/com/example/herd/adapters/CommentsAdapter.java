@@ -44,9 +44,9 @@ public class CommentsAdapter extends RecyclerView.Adapter<CommentsAdapter.PostVi
     private double userLat, userLon;
 
     public CommentsAdapter(CommentsViewModel viewModel, OnItemClickListener clickListener) {
-        this.postList = viewModel.getPostList();
         this.clickListener = clickListener;
         this.viewModel = viewModel;
+        this.postList = viewModel.getPostList();
         this.likes = viewModel.getUserLikes();
         this.dislikes = viewModel.getUserDislikes();
         this.postID = viewModel.getPostIDList();

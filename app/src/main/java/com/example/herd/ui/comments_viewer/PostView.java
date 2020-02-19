@@ -5,22 +5,17 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.util.AttributeSet;
-import android.view.View;
+import android.widget.LinearLayout;
 
 import androidx.annotation.Nullable;
 
-public class PostView extends View {
+import com.example.herd.R;
 
-    public PostView(Context context) {
-        super(context);
-    }
+public class PostView extends LinearLayout {
 
     public PostView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
-    }
-
-    public PostView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
+        inflate(context, R.layout.post_view, this);
     }
 
     @Override
