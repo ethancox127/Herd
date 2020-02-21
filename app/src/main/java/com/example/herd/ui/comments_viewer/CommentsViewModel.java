@@ -11,17 +11,16 @@ import com.example.herd.repositories.ReadRepository;
 import com.example.herd.repositories.UserContract;
 import com.example.herd.repositories.UserRepository;
 import com.example.herd.repositories.WriteRepository;
+import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.firestore.QuerySnapshot;
 
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 
 import androidx.lifecycle.AndroidViewModel;
@@ -51,6 +50,7 @@ public class CommentsViewModel extends AndroidViewModel {
     private ArrayList<String> likes, dislikes;
     private ArrayList<Post> posts = new ArrayList<>();
     private ArrayList<String> postIDList = new ArrayList<>();
+    Timestamp curTime = Timestamp.now();
 
     public CommentsViewModel(Application application) {
         super(application);
@@ -67,10 +67,12 @@ public class CommentsViewModel extends AndroidViewModel {
 
     public void setQuery(String postID) {
         this.postID = postID;
-        likes.add(0, postID);
+        if (dbRepsoitory.getList(1).contains(postID)) {
+            likes.add(0, postID);
+        }
         commentsQuery = firestore.collection("posts")
                 .document(postID)
-                .collection("comments");
+                .collection("comments").orderBy("score", Query.Direction.DESCENDING);
         commentsRef = firestore.collection("posts")
                 .document(postID)
                 .collection("comments");
@@ -157,8 +159,10 @@ public class CommentsViewModel extends AndroidViewModel {
     }
 
     public void addToLists(Post post, String id) {
-        posts.add(0, post);
-        postIDList.add(0, id);
+        if (!postIDList.contains(id)) {
+            posts.add(0, post);
+            postIDList.add(0, id);
+        }
     }
 
     public ArrayList<Post> getPostList() { return posts; }
@@ -185,8 +189,12 @@ public class CommentsViewModel extends AndroidViewModel {
 
                         if (!postIDList.contains(doc.getId())) {
 
-                            postIDList.add(doc.getId());
-                            posts.add(doc.toObject(Post.class));
+                            if (doc.getTimestamp("time").compareTo(curTime) < 0) {
+
+                                postIDList.add(doc.getId());
+                                posts.add(doc.toObject(Post.class));
+
+                            }
 
                         }
                         break;
@@ -194,7 +202,7 @@ public class CommentsViewModel extends AndroidViewModel {
                     case MODIFIED:
                         Log.d(TAG, "Modified");
                         if (doc.getMetadata().hasPendingWrites()) {
-                            int index = postID.indexOf(doc.getId());
+                            int index = postIDList.indexOf(doc.getId());
                             if (index != -1)
                                 posts.set(index, doc.toObject(Post.class));
                         }
