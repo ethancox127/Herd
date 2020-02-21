@@ -185,6 +185,9 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
                     postAdapter.updateItems();
                     postAdapter.updateLocation();
                     postAdapter.notifyDataSetChanged();
+                    if (viewModel.getRefresh()) {
+                        viewModel.setRefresh(false);
+                    }
 
                 }
             }
@@ -372,6 +375,7 @@ public class PostsFragment extends Fragment implements View.OnClickListener, Swi
     public void onRefresh() {
         //Refresh the adapter and remove the spinner when done
         Log.d("Herd", "In onRefresh");
+        viewModel.setRefresh(true);
         reloadPosts();
         swipeContainer.setRefreshing(false);
     }

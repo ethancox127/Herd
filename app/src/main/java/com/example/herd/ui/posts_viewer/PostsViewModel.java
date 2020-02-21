@@ -64,6 +64,7 @@ public class PostsViewModel extends AndroidViewModel {
     private String type = "top";
     private int distance = 30, time = 12;
     private MutableLiveData<Boolean> newPosts = new MutableLiveData();
+    private boolean refresh = false;
 
     public PostsViewModel(@NonNull Application application) {
         super(application);
@@ -193,6 +194,7 @@ public class PostsViewModel extends AndroidViewModel {
     public void setLongitude(double longitude) {
         preferencesRepository.updateLongitude(longitude);
     }
+    public void setRefresh(boolean refresh) { this.refresh = refresh; }
 
     //Getter methods for variables
     public ArrayList<String> getPostID() {
@@ -216,6 +218,7 @@ public class PostsViewModel extends AndroidViewModel {
     public int getTime() { return time; }
     public double getLatitude() { return preferencesRepository.getLatitude(); }
     public double getLongitude() { return preferencesRepository.getLongitude(); }
+    public boolean getRefresh() { return refresh; }
 
     //Maps query snapshots of posts to an ArrayList
     private class Deserializer implements androidx.arch.core.util.Function<DisplayObject, ArrayList<Post>> {
@@ -296,10 +299,23 @@ public class PostsViewModel extends AndroidViewModel {
 
                     case MODIFIED:
                         Log.d(TAG, "Modified");
-                        if (doc.getMetadata().hasPendingWrites()) {
-                            int index = postID.indexOf(doc.getId());
-                            if (index != -1)
-                                postList.set(index, doc.toObject(Post.class));
+                        if (refresh == true) {
+                            postList.set(postID.indexOf(doc.getId()), doc.toObject(Post.class));
+                        } else {
+                            if (doc.getMetadata().hasPendingWrites()) {
+
+                                Post post = doc.toObject(Post.class);
+                                int index = postID.indexOf(doc.getId());
+
+                                if (index != -1) {
+                                    if (post.getScore() > postList.get(index).getScore()) {
+                                        post.setScore(postList.get(index).getScore() + 1);
+                                    } else if (post.getScore() < postList.get(index).getScore()) {
+                                        post.setScore(postList.get(index).getScore() - 1);
+                                    }
+                                    postList.set(index, post);
+                                }
+                            }
                         }
                         break;
 
